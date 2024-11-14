@@ -20,7 +20,7 @@ def pairwise_distance(x, y):
             elif j == 0:
                 m[i][j] = -i
             else:
-                diag = m[i - 1][j - 1] + ((x[i - 1] != y[j - 1]) if 1 else 0)(1 if (x[i - 1] != y[j - 1]) else 0)
+                diag = m[i - 1][j - 1] + ((x[i - 1] != y[j - 1]) if 1 else 0)
                 right = m[i][j - 1] - 1
                 down = m[i - 1][j] - 1
                 m[i][j] = max(diag, right, down)
@@ -140,8 +140,7 @@ def neighbor_join(D, og):
 
 def main():
     sequences = ["CAGGATTAG", "CAGGTTTAG", "CATTTTAG", "ACGTTAA", "ATGTTAA"]
-    print("haiiii")
-    get_matrix(sequences)
+    score_matrix = get_matrix(sequences)
 
 if __name__ == "__main__":
     main()
