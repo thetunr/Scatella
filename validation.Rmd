@@ -9,6 +9,22 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+```{r}
+# Install optimx
+install.packages("optimx", dependencies=TRUE, repos="http://cran.rstudio.com")
+
+# Also get snow (for parallel processing)
+install.packages("snow")
+library(snow)
+
+# Install phylobase
+install.packages("phylobase", dependencies=TRUE, repos="http://cran.rstudio.com")
+
+# From October 2018 onwards, install BioGeoBEARS from GitHub: https://github.com/nmatzke/BioGeoBEARS
+install.packages("devtools")
+library(devtools)
+devtools::install_github(repo="nmatzke/BioGeoBEARS", INSTALL_opts="--byte-compile", dependencies=FALSE)
+```
 ## R Markdown
 
 This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
