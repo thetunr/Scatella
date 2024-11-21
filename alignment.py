@@ -44,6 +44,7 @@ def get_matrix(sequences):
             m[s2][s1] = score
     return m
 
+#haiii :3
 
 def main():
     sequences = ["CAGGATTAG", "CAGGTTTAG", "CATTTTAG", "ACGTTAA", "ATGTTAA"]
