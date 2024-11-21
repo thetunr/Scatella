@@ -138,6 +138,35 @@ def neighbor_join(D, og):
     
     return E, uD, fake_root
 
+"""
+Input: sequences: list of sequences (not alligned)
+Output: a multiple sequence allignment
+"""
+def iterative_allignment(sequences):
+    """
+    Returns the kimura distance between sequence x and sequence y
+    """
+    def kimura_distance(x,y):
+        return 0
+    
+    """
+    Creates a tree using upgma (not sure the input and output format yet)
+    """
+    def upgma():
+        return 0
+    # Muscle Step 1: Draft Progressive
+    
+    # make 2D matrix with kimura distance for each of the allignments
+    M = [[0 for k in len(sequences)] for i in len(sequences)]
+    for x in sequences:
+        for y in sequences:
+            if M[x][y] == 0:
+                M[x][y] = kimura_distance(x,y)
+                M[y][x] = M[x][y]
+
+    #build a guide tree using M (same as the progressive method? or maybe w/ upgma?)
+    #do progressive allignment on the guide tree
+
 
 def main():
     sequences = ["CAGGATTAG", "CAGGTTTAG", "CATTTTAG", "ACGTTAA", "ATGTTAA"]
