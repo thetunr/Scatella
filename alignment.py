@@ -44,6 +44,7 @@ def get_matrix(sequences):
             m[s2][s1] = score
     return m
 
+#haiii :3
 
 ''' Performs the neighbor joining algorithm on the distance matrix and the index of the outgroup species.
 
