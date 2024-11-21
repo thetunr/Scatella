@@ -56,6 +56,67 @@ def kmerdistance(k, x, y):
   score = total_kmers - 2 * shared_kmers
     
   return score
+
+"""
+Returns the kimura distance between two sequences x and y
+Assumes that x and y are of the same length
+"""
+def kimura_distance(x,y):
+    """
+    returns True if a and b represent a transition, False if they represent
+    a transversion
+    """
+    def is_transition(a,b):
+        if a == "A" or a == "G":
+            if b == "A" or b == "G":
+                return True
+            else:
+                return False
+        else:
+            if b == "C" or b == "T":
+                return True
+            else:
+                return False
+            
+    n = len(x)
+    transitions = 0
+    transversions= 0
+    for i in range(n):
+        if x[i] != "-" and y[i] != "-":
+            if is_transition(x[i],y[i]):
+                transitions = transitions + 1
+            else:
+                transversions = transversions + 1
+    # p is the proportion of transitions (against the full length)
+    p = transitions/n
+    # q is the proportion of transversions (against the full length)
+    q = transversions/n
+
+    return -0.5(np.log(1-2*p-q))
+
+
+"""
+Input: sequences: list of sequences (not alligned)
+Output: a multiple sequence allignment
+"""
+def iterative_allignment(sequences):
+    """
+    Creates a tree using upgma (not sure the input and output format yet)
+    """
+    def upgma():
+        return 0
+    # Muscle Step 1: Draft Progressive
+    
+    # make 2D matrix with kimura distance for each of the allignments
+    M = [[0 for k in len(sequences)] for i in len(sequences)]
+    for x in sequences:
+        for y in sequences:
+            if M[x][y] == 0:
+                M[x][y] = kimura_distance(x,y)
+                M[y][x] = M[x][y]
+
+    #build a guide tree using M (same as the progressive method? or maybe w/ upgma?)
+    #do progressive allignment on the guide tree
     
 
 def main():
