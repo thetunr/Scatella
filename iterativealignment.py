@@ -2,21 +2,28 @@ import numpy as np
 from collections import Counter
 
 
-''' Computes the pairwise distance matrix
+'''
+Computes the pairwise distance matrix.
 Arguments: 
     sequences: the list of sequences to align
 Returns:
     m: the score matrix of pairwise distances
 '''
-def get_matrix(sequences):
+def get_matrix(sequences, func):
     m = np.zeros((len(sequences), len(sequences)))
 
     for s1 in range(len(sequences)):
         for s2 in range(s1 + 1, len(sequences)):
-            score = kmerdistance(5, sequences[s1], sequences[s2])
+            score = func(5, sequences[s1], sequences[s2])
             m[s1][s2] = score
             m[s2][s1] = score
     return m
+
+
+"""Generate all k-mers from the input string s."""
+def get_kmers(s, k):
+    return [s[i:i+k] for i in range(len(s) - k + 1)]
+
 
 '''
 Computes the k-mer distance score of two strings.
@@ -29,11 +36,6 @@ Returns:
 '''
 def kmerdistance(k, x, y):
   # Step 1: Extract k-mers from each string
-  def get_kmers(s, k):
-      """Generate all k-mers from the input string s."""
-      return [s[i:i+k] for i in range(len(s) - k + 1)]
-  
-  # Generate k-mers for both strings
   kmers_x = get_kmers(x, k)
   kmers_y = get_kmers(y, k)
   
@@ -57,11 +59,11 @@ def kmerdistance(k, x, y):
     
   return score
 
-"""
+'''
 Returns the kimura distance between two sequences x and y
 Assumes that x and y are of the same length
-"""
-def kimura_distance(x,y):
+'''
+def kimura_distance(x, y):
     """
     returns True if a and b represent a transition, False if they represent
     a transversion
@@ -95,18 +97,132 @@ def kimura_distance(x,y):
     return -0.5(np.log(1-2*p-q))
 
 
+'''Creates a rooted tree using UPGMA.
+Arguments:
+    D: distance matrix
+Returns:
+    E : A list storing the edges chosen from the UPGMA algorithm in the form of tuples: (index, index). 
+        For example [(3,1),(3,2)] represents an rooted UPGMA tree of two edges, 
+        3<-->1 and 3<-->2, where 1 & 2 are indexes of leaf nodes in the tree,
+        and 3 is the index of the internal node you added.
+    uD: A dictionary of dictionary, defining distances between all nodes (leaves and internal nodes),
+        it's of the same format as D, storing all edge lengths of the UPGMA tree whose topology is specified by E.
+        For example, {1: {1: 0.0, 2: 1.0, 3: 1.5}, 2: {1: 1.0, 2: 0.0, 3: 2.0}, 3: {1: 1.5, 2: 2.0, 3: 0.0}}
+        will fully specify the edge lengths for the tree represented by the E example ([(3,1),(3,2)]):
+        Length(3<-->1) = 1.5, Length(3<-->2) = 2.0.
+    root: which node index represent the root
+'''
+def upgma(D):
+    # init
+    E = []
+    uD = {i: {j: val for j, val in D[i].items()} for i in D}
+    n = len(D)
+    z = len(D)
+    cluster_counts = [1] * len(E)
+
+    # until D is 2x2
+    while n > 2:
+        # score: 
+        x = 0; y = 0
+        min_score = float('inf')
+
+        for i in D:
+            for j in D[i]:
+                if i != j:
+                    score = D[i][j]
+                    if score < min_score:
+                        min_score = score; x = i; y = j
+
+        # Update distance matrix:
+        D[z] = {}; uD[z] = {}
+        count_x = cluster_counts[x]; count_y = cluster_counts[y]
+        for k in D:
+            if k != x and k != y:
+                d_zk = (D[x][k] * count_x + D[y][k] * count_y) / (count_x + count_y)
+                D[z][k] = d_zk; D[k][z] = d_zk   # update D
+                uD[z][k] = d_zk; uD[k][z] = d_zk # update uD
+        uD[z][x] = D[x][z]; uD[z][y] = D[y][z]
+        uD[x][z] = D[x][z]; uD[y][z] = D[y][z]
+
+        # Deletion of rows x, y
+        del D[x]; del D[y]
+        # Deletion of columns x, y
+        for i in D:
+            if x in D[i]: del D[i][x]
+            if y in D[i]: del D[i][y]
+
+        E.append((z, x)); E.append((z, y)) # append to E
+        cluster_counts.append(count_x + count_y)
+        n = len(D)
+        z += 1
+
+    root = z - 1
+    return E, uD, root
+
+
+''' Helper function for defining a tree data structure.
+    First finds the root node and find its children, and then generates 
+    the whole binary tree based on.
+
+Arguments:
+    E：A list storing the edges chosen from the NJ algorithm in the form of tuples: (index, index). 
+         (See the description in `neighbor_join` for details).
+    fake_root: which node index represent the root
+Returns:
+    tree_map：A dictionary storing the topology of the tree, where each key is a node index and each value is a list of
+              node indices of the direct children nodes of the key, of at most length 2. For example, {3: [1, 2], 2: [], 1: []}
+              represents the tree with 1 internal node (3) and two leaves (1, 2). the [] value shows the leaf node status.
+'''
+def assemble_tree(root, E):
+    ''' Complete this function. '''
+    tree_map = {}
+    def find_children(parent, E):
+        for l, r in E:
+            if l == parent or r == parent:
+                if l == parent:
+                    if l in tree_map:
+                        tree_map[l].append(r)
+                    else:
+                        tree_map[l] = [r]
+                    find_children(r, list(filter(lambda x: x != (l, r), E)))
+                else:
+                    if r in tree_map:
+                        tree_map[r].append(l)
+                    else:
+                        tree_map[r] = [l]
+                    find_children(l, list(filter(lambda x: x != (l, r), E)))
+    find_children(root, E)
+    return tree_map
+
+
+'''
+'''
+def profile_profile_alignment(tree):
+    return
+
+
 """
 Input: sequences: list of sequences (not alligned)
 Output: a multiple sequence allignment
 """
-def iterative_allignment(sequences):
-    """
-    Creates a tree using upgma (not sure the input and output format yet)
-    """
-    def upgma():
-        return 0
-    # Muscle Step 1: Draft Progressive
+def muscle(sequences):
     
+    # Muscle Step 1: Draft Progressive
+    # take unaligned sequences
+    # 1.1 k-mer counting
+    kmer_matrix = get_matrix(sequences, kmerdistance)
+    # k-mer distance matrix is computed
+    # 1.2 UPGMA
+    E, uD, root = upgma(kmer_matrix)
+    tree1 = assemble_tree(root, E)
+    # TREE1 is computed
+    # 1.3 progressive alignment
+    msa1 = profile_profile_alignment(tree1)
+    # MSA1 is computed
+    
+
+
+
     # make 2D matrix with kimura distance for each of the allignments
     M = [[0 for k in len(sequences)] for i in len(sequences)]
     for x in sequences:
@@ -122,7 +238,7 @@ def iterative_allignment(sequences):
 def main():
     sequences = ["CAGGATTAG", "CAGGTTTAG", "CATTTTAG", "ACGTTAA", "ATGTTAA"]
     # print(pairwise_distance(sequences[3], sequences[2]))
-    print(get_matrix(sequences))
+    muscle(sequences)
 
 if __name__ == "__main__":
     main()

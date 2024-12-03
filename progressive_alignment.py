@@ -144,11 +144,6 @@ def neighbor_join(D, og):
     
     return E, uD, fake_root
 
-''' Performs profile-profile alignment, which aligns alignments.
-'''
-def profprof_alignment():
-    return
-
 
 def main():
     sequences = ["CAGGATTAG", "CAGGTTTAG", "CATTTTAG", "ACGTTAA", "ATGTTAA"]
