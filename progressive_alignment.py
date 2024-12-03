@@ -44,7 +44,19 @@ def get_matrix(sequences):
             m[s2][s1] = score
     return m
 
-#haiii :3
+
+''' Converts 2d matrix to dictionary
+Arguments: 
+    matrix: 2d matrix
+Returns:
+    D: dictionary
+'''
+def matrix_to_dict(matrix):
+    D = {}
+    for i, row in enumerate(matrix):
+        D[i] = {j: val for j, val in enumerate(row)}
+    return D
+
 
 ''' Performs the neighbor joining algorithm on the distance matrix and the index of the outgroup species.
 
@@ -138,10 +150,26 @@ def neighbor_join(D, og):
     
     return E, uD, fake_root
 
+''' Performs profile-profile alignment, which aligns alignments.
+'''
+def profprof_alignment():
+    return
+
+
 def main():
     sequences = ["CAGGATTAG", "CAGGTTTAG", "CATTTTAG", "ACGTTAA", "ATGTTAA"]
     # print(pairwise_distance(sequences[3], sequences[2]))
-    print(get_matrix(sequences))
+    m = get_matrix(sequences)
+    D = matrix_to_dict(m)
+    print(m)
+    print(D)
+    E, uD, fake_root = neighbor_join(D, 2) # have to choose outgroup
+
+    print(E) # edges
+    # print(uD)
+    print(fake_root)
+
+
 
 if __name__ == "__main__":
     main()
