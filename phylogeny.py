@@ -133,6 +133,15 @@ def assemble_tree(fake_root, E):
     find_children(fake_root, E)
     return tree_map
 
+''' Finds the post-order traversal of the tree given by tree_map
+    rooted at fake_root.
+
+Arguments:
+    fake_root: which node index represent the root
+    tree_map：A dictionary storing the topology of the tree (See the description in `assemble_tree` for details).
+Returns:
+    ordering: the ordering of nodes given by the post order traversal of the tree
+'''
 def get_ordering(fake_root, tree_map):
     def post_order(parent):
         l, r = tree_map[parent]
