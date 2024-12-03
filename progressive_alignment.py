@@ -79,12 +79,6 @@ Returns:
         will fully specify the edge lengths for the tree represented by the E example ([(3,1),(3,2)]):
         Length(3<-->1) = 1.5, Length(3<-->2) = 2.0.
     fake_root: which node index represent the root
-
-        *************************************************************************************
-        ***** Please note that this return value format is just for guiding purpose,    *****
-        ***** and we are not grading based on the output of this function (neighbor_join).***
-        ***** Please feel free to use return structure / indexing system you like.      *****
-        *************************************************************************************
 '''
 def neighbor_join(D, og):
     # init
