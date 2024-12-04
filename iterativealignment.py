@@ -97,7 +97,7 @@ def kimura_distance(x, y):
     return -0.5(np.log(1-2*p-q))
 
 
-'''Creates a rooted tree using UPGMA.
+''' Creates a rooted tree using UPGMA.
 Arguments:
     D: distance matrix
 Returns:
@@ -208,18 +208,20 @@ Output: a multiple sequence allignment
 def muscle(sequences):
     
     # Muscle Step 1: Draft Progressive
-    # take unaligned sequences
     # 1.1 k-mer counting
-    kmer_matrix = get_matrix(sequences, kmerdistance)
-    # k-mer distance matrix is computed
+    kmer_matrix = get_matrix(sequences, kmerdistance) # k-mer distance matrix
     # 1.2 UPGMA
     E, uD, root = upgma(kmer_matrix)
-    tree1 = assemble_tree(root, E)
-    # TREE1 is computed
+    tree1 = assemble_tree(root, E) # TREE1
     # 1.3 progressive alignment
-    msa1 = profile_profile_alignment(tree1)
-    # MSA1 is computed
-    
+    msa1 = profile_profile_alignment(tree1) # MSA1
+
+    # Muscle Step 2: Improved progressive
+    # 2.1 kimura distance
+    # use MSA1
+    # 2.2 UPGMA
+    # 2.3 progressive alignment
+    # MSA2 is computed
 
 
 
