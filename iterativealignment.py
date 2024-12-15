@@ -2,6 +2,22 @@ import numpy as np
 from collections import Counter
 
 
+def matrix_to_dict(matrix):
+    D = {}
+    for i, row in enumerate(matrix):
+        D[i] = {j: val for j, val in enumerate(row)}
+    return D
+
+def dict_to_matrix(D):
+    num_rows = max(D.keys()) + 1
+    num_cols = max(max(row.keys()) for row in D.values()) + 1 if D else 0
+    matrix = [[0 for _ in range(num_cols)] for _ in range(num_rows)]
+    for i, row in D.items():
+        for j, val in row.items():
+            matrix[i][j] = val
+    return matrix
+
+
 '''
 Computes the pairwise distance matrix.
 Arguments: 
@@ -9,18 +25,23 @@ Arguments:
 Returns:
     m: the score matrix of pairwise distances
 '''
-def get_matrix(sequences, func):
+def get_matrix(sequences, func, k=0):
     m = np.zeros((len(sequences), len(sequences)))
 
     for s1 in range(len(sequences)):
         for s2 in range(s1 + 1, len(sequences)):
-            score = func(5, sequences[s1], sequences[s2])
+            if func == "kmers":
+                score = kmerdistance(k, sequences[s1], sequences[s2])
+            elif func =="kimura":
+                score = kimura_distance(sequences[s1], sequences[s2])
+            else:
+                print("invalid function name")
             m[s1][s2] = score
             m[s2][s1] = score
     return m
 
 
-"""Generate all k-mers from the input string s."""
+'''Generate all k-mers from the input string s.'''
 def get_kmers(s, k):
     return [s[i:i+k] for i in range(len(s) - k + 1)]
 
@@ -59,49 +80,49 @@ def kmerdistance(k, x, y):
     
   return score
 
+
+'''
+Returns True if a and b represent a transition, False if transversion
+'''
+def is_transition(a, b):
+    if a == "A" or a == "G":
+        if b == "A" or b == "G":
+            return True
+        else:
+            return False
+    else:
+        if b == "C" or b == "T":
+            return True
+        else:
+            return False
+
 '''
 Returns the kimura distance between two sequences x and y
 Assumes that x and y are of the same length
 '''
 def kimura_distance(x, y):
-    """
-    returns True if a and b represent a transition, False if they represent
-    a transversion
-    """
-    def is_transition(a,b):
-        if a == "A" or a == "G":
-            if b == "A" or b == "G":
-                return True
-            else:
-                return False
-        else:
-            if b == "C" or b == "T":
-                return True
-            else:
-                return False
-            
     n = len(x)
     transitions = 0
     transversions= 0
     for i in range(n):
         if x[i] != "-" and y[i] != "-":
-            if is_transition(x[i],y[i]):
+            if is_transition(x[i], y[i]):
                 transitions = transitions + 1
             else:
                 transversions = transversions + 1
     # p is the proportion of transitions (against the full length)
-    p = transitions/n
+    p = transitions / n
     # q is the proportion of transversions (against the full length)
-    q = transversions/n
+    q = transversions / n
 
-    return -0.5(np.log(1-2*p-q))
+    return -0.5 * (np.log(1 - 2 * p - q))
 
 
 ''' Creates a rooted tree using UPGMA.
 Arguments:
     D: distance matrix
 Returns:
-    E : A list storing the edges chosen from the UPGMA algorithm in the form of tuples: (index, index). 
+    E: A list storing the edges chosen from the UPGMA algorithm in the form of tuples: (index, index). 
         For example [(3,1),(3,2)] represents an rooted UPGMA tree of two edges, 
         3<-->1 and 3<-->2, where 1 & 2 are indexes of leaf nodes in the tree,
         and 3 is the index of the internal node you added.
@@ -118,7 +139,7 @@ def upgma(D):
     uD = {i: {j: val for j, val in D[i].items()} for i in D}
     n = len(D)
     z = len(D)
-    cluster_counts = [1] * len(E)
+    cluster_counts = [1] * len(D)
 
     # until D is 2x2
     while n > 2:
@@ -134,15 +155,19 @@ def upgma(D):
                         min_score = score; x = i; y = j
 
         # Update distance matrix:
-        D[z] = {}; uD[z] = {}
+        D[z] = { z: 0 }; uD[z] = { z: 0 }
         count_x = cluster_counts[x]; count_y = cluster_counts[y]
+
         for k in D:
-            if k != x and k != y:
+            if k != x and k != y and k != z:
                 d_zk = (D[x][k] * count_x + D[y][k] * count_y) / (count_x + count_y)
                 D[z][k] = d_zk; D[k][z] = d_zk   # update D
                 uD[z][k] = d_zk; uD[k][z] = d_zk # update uD
         uD[z][x] = D[x][z]; uD[z][y] = D[y][z]
         uD[x][z] = D[x][z]; uD[y][z] = D[y][z]
+
+        print(dict_to_matrix(D))
+        print(dict_to_matrix(uD))
 
         # Deletion of rows x, y
         del D[x]; del D[y]
@@ -153,6 +178,9 @@ def upgma(D):
 
         E.append((z, x)); E.append((z, y)) # append to E
         cluster_counts.append(count_x + count_y)
+
+        print(len(cluster_counts))
+
         n = len(D)
         z += 1
 
@@ -198,23 +226,28 @@ def assemble_tree(root, E):
 '''
 '''
 def profile_profile_alignment(tree):
-    return
+    return 0
 
 
-"""
+'''
 Input: sequences: list of sequences (not alligned)
 Output: a multiple sequence allignment
-"""
+'''
 def muscle(sequences):
     
     # Muscle Step 1: Draft Progressive
     # 1.1 k-mer counting
-    kmer_matrix = get_matrix(sequences, kmerdistance) # k-mer distance matrix
+    kmer_matrix = matrix_to_dict(get_matrix(sequences, "kmers", 5)) # k-mer distance matrix
     # 1.2 UPGMA
     E, uD, root = upgma(kmer_matrix)
     tree1 = assemble_tree(root, E) # TREE1
     # 1.3 progressive alignment
     msa1 = profile_profile_alignment(tree1) # MSA1
+
+    print(E)
+    print(dict_to_matrix(uD))
+    print(root)
+    print(tree1)
 
     # Muscle Step 2: Improved progressive
     # 2.1 kimura distance
@@ -226,12 +259,12 @@ def muscle(sequences):
 
 
     # make 2D matrix with kimura distance for each of the allignments
-    M = [[0 for k in len(sequences)] for i in len(sequences)]
-    for x in sequences:
-        for y in sequences:
-            if M[x][y] == 0:
-                M[x][y] = kimura_distance(x,y)
-                M[y][x] = M[x][y]
+    # M = [[0 for k in len(sequences)] for i in len(sequences)]
+    # for x in sequences:
+    #     for y in sequences:
+    #         if M[x][y] == 0:
+    #             M[x][y] = kimura_distance(x,y)
+    #             M[y][x] = M[x][y]
 
     #build a guide tree using M (same as the progressive method? or maybe w/ upgma?)
     #do progressive allignment on the guide tree
@@ -240,7 +273,10 @@ def muscle(sequences):
 def main():
     sequences = ["CAGGATTAG", "CAGGTTTAG", "CATTTTAG", "ACGTTAA", "ATGTTAA"]
     # print(pairwise_distance(sequences[3], sequences[2]))
+    # print(kmerdistance(5, sequences[0], sequences[1]))
+
     muscle(sequences)
+    
 
 if __name__ == "__main__":
     main()
