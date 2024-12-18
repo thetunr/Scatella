@@ -145,38 +145,52 @@ Returns:
 def progressive_alignment(sequences, root, guide_tree, ordering, cluster_counts):
     ordering.append(root)
     msa = [[]] * (len(ordering))
+    msa_sequences = [[] for _ in range(len(ordering))] # MSA SEQUENCES
 
-    
     # Aligning profiles up guide tree before root:
     for i, node in enumerate(ordering):
         # Leaf: 
         if node < len(sequences):
             sequence = sequences[node]
             msa[node] = [[0.0 for _ in range(len(sequence))] for _ in range(len(nucleotide_mapping))]
+            msa_sequences[node].append(node)
             for j, nucleotide in enumerate(sequence):
                 if nucleotide in nucleotide_mapping:
                     msa[node][nucleotide_mapping[nucleotide]][j] = 1.0
         # Node: 
         else:
             leaves = guide_tree[node]
-            x_count = cluster_counts[leaves[0]]; y_count = cluster_counts[leaves[1]]
-            score, (p_x, p_y) = profile_alignment(msa[leaves[0]], msa[leaves[1]], x_count, y_count, 60)
+            x_leaf = leaves[0]; y_leaf = leaves[1]            
+            x_count = len(msa_sequences[x_leaf]); y_count = len(msa_sequences[y_leaf]) # MSA SEQUENCES            
+            score, (p_x, p_y), x_gaps, y_gaps = profile_alignment(msa[x_leaf], msa[y_leaf], x_count, y_count, 60)
             msa[node] = combine_profiles(p_x, p_y, x_count, y_count)
+            msa_sequences[node] = msa_sequences[x_leaf] + msa_sequences[y_leaf]
 
-            if node == root:
-                # print_profile_matrix(msa[leaves[0]])
-                # print_profile_matrix(msa[leaves[1]])
-                # print_profile_matrix(p_x)
-                # print_profile_matrix(p_y)
-
-                print(len(msa[leaves[0]][0]))
-                print(len(msa[leaves[1]][0]))
-                print(len(p_x[0]))
-                print(len(p_y[0]))
-
-    
+            gap_probs = [0.0 for _ in range(len(nucleotide_mapping) - 1)] + [1.0]
+            for node in msa_sequences[x_leaf]:
+                for x_i in x_gaps:
+                    for row, value in zip(msa[node], gap_probs):
+                        row.insert(x_i, value)
+            for node in msa_sequences[y_leaf]:
+                for y_i in y_gaps:
+                    for row, value in zip(msa[node], gap_probs):
+                        row.insert(y_i, value)
 
     return msa
+
+
+''' Returns aligned sequences given MSA profiles. 
+Arguments: 
+    sequences: sequences to be aligned
+    msa: profiles
+Return:
+    msa_sequences: aligned sequences from profiles
+'''
+def get_msa_sequences(sequences, msa):
+    msa_sequences = []
+    for i in range(len(sequences)):
+        msa_sequences.append(get_profile_sequence(msa[i]))
+    return msa_sequences
 
 
 '''
@@ -184,7 +198,6 @@ Input: sequences: list of sequences (not alligned)
 Output: a multiple sequence allignment
 '''
 def muscle(sequences):
-
     # Muscle Step 1: Draft Progressive
     # 1.1 k-mer counting
     kmer_matrix = matrix_to_dict(get_distance_matrix(sequences, "kmers", 5))
@@ -199,33 +212,27 @@ def muscle(sequences):
     # 1.3 progressive alignment
     post_ordering = get_ordering(root, tree1)
     msa1 = progressive_alignment(sequences, root, tree1, post_ordering, cluster_counts)
-    # print_profiles(msa1)
-
-    # Muscle Step 2: Improved progressive
-    msa1_sequences = []
-    for i in range(len(msa1)):
-        msa1_sequences.append(get_profile_sequence(msa1[i]))
-    # 2.1 kimura distance
-    # kimura_matrix = matrix_to_dict(get_distance_matrix(msa1_sequences, "kimura"))
-    # 2.2 UPGMA
-    # E, uD, root, cluster_counts = upgma(kimura_matrix)
-    # tree2 = assemble_tree(root, E)
-    # 2.3 progressive alignment
-    # post_ordering = get_ordering(root, tree2)
-    # msa2 = progressive_alignment(sequences, root, tree2, post_ordering, cluster_counts)
-
-
-    # make 2D matrix with kimura distance for each of the allignments
-    # M = [[0 for k in len(sequences)] for i in len(sequences)]
-    # for x in sequences:
-    #     for y in sequences:
-    #         if M[x][y] == 0:
-    #             M[x][y] = kimura_distance(x,y)
-    #             M[y][x] = M[x][y]
-
-    #build a guide tree using M (same as the progressive method? or maybe w/ upgma?)
-    #do progressive allignment on the guide tree
+    msa1_sequences = get_msa_sequences(sequences, msa1)
     
+    # Muscle Step 2: Improved progressive
+    # 2.1 kimura distance
+    kimura_matrix = matrix_to_dict(get_distance_matrix(msa1_sequences, "kimura"))
+    # 2.2 UPGMA
+    E, uD, root, cluster_counts = upgma(kimura_matrix)
+    tree2 = assemble_tree(root, E)
+    # 2.3 progressive alignment
+    post_ordering = get_ordering(root, tree2)
+    msa2 = progressive_alignment(sequences, root, tree2, post_ordering, cluster_counts)
+    msa2_sequences = get_msa_sequences(sequences, msa2)
+    print(msa2_sequences)
+    # CAN BE ITERATED
+
+    # Muscle Step 3: Refinement
+    
+    # Split tree into two subtrees
+    # Make profiles of each half of the tree
+    # Re-align profiles
+    # Accept or reject new alignment
 
 def main():
     sequences = ["CAGGATTAG", "CAGGTTTAG", "CATTTTAG", "ACGTTAA", "ATGTTAA"]

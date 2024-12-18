@@ -27,10 +27,14 @@ Arguments:
 Returns:
     p_x: profile alignment of profile x
     p_y: profile alignment of profile y
+    x_gaps: indices in x where gaps were inserted
+    y_gaps: indices in y where gaps were inserted
 '''
 def profile_traceback(x, y, t):
     p_x = [[] for _ in range(len(x))]
     p_y = [[] for _ in range(len(y))]
+    x_gaps = []
+    y_gaps = []
     num_nucleotides = len(x)
     i = len(x[0])
     j = len(y[0])
@@ -49,6 +53,7 @@ def profile_traceback(x, y, t):
                     else:
                         p_y[k].append(0.0)
                 i -= 1
+                y_gaps.append(i)
             case -1: # right move
                 for k in range(num_nucleotides):
                     p_y[k].append(y[k][j - 1])
@@ -57,10 +62,11 @@ def profile_traceback(x, y, t):
                     else:
                         p_x[k].append(0.0)
                 j -= 1
+                x_gaps.append(j)
     for k in range(len(p_x)):
         p_x[k].reverse()
         p_y[k].reverse()
-    return p_x, p_y
+    return p_x, p_y, x_gaps, y_gaps
 
 
 ''' Combines two profiles into one profile.
@@ -135,9 +141,9 @@ def profile_alignment(x, y, x_count, y_count, d):
                 t[i, j] = -1 # representing right move as -1
                 
     score = F[n, m]
-    p_x, p_y = profile_traceback(x, y, t)
+    p_x, p_y, x_gaps, y_gaps = profile_traceback(x, y, t)
 
-    return score, (p_x, p_y)
+    return score, (p_x, p_y), x_gaps, y_gaps
 
 
 ''' Gets best sequence given a profile. '''

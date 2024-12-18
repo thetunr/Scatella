@@ -52,24 +52,26 @@ def is_transition(a, b):
         else:
             return False
 
-''' Returns the kimura distance between two sequences x and y
+''' Returns the kimura distance between two sequences x and y. 
 Assumes that x and y are of the same length
 '''
 def kimura_distance(x, y):
-    n = len(x)
     transitions = 0
     transversions= 0
+    sites = 0
+    for base1, base2 in zip(x, y):
+        if base1 == '-' or base2 == '-':
+            continue
+        sites += 1
+        if base1 == base2:
+            continue
+        if is_transition(base1, base2):
+            transitions += 1
+        else:
+            transversions += 1
 
-    for i in range(n):
-        if x[i] != "-" and y[i] != "-":
-            if is_transition(x[i], y[i]):
-                transitions = transitions + 1
-            else:
-                transversions = transversions + 1
-    # p is the proportion of transitions (against the full length)
-    p = transitions / n
-    # q is the proportion of transversions (against the full length)
-    q = transversions / n
+    p = transitions / sites
+    q = transversions / sites
 
     return -0.5 * (np.log(1 - 2 * p - q))
 
