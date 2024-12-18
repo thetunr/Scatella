@@ -1,10 +1,15 @@
 import numpy as np
 from distance_matrix import get_distance_matrix
-from print_matrix import matrix_to_dict, dict_to_matrix, print_dict_matrix
+from profile_functions import profile_alignment, combine_profiles, get_profile_sequence
+from print_matrix import matrix_to_dict, dict_to_matrix, print_dict_matrix, print_profiles, print_profile_matrix, print_profile_sequence
 
-''' Finds the post-order traversal of the tree given by tree_map
-    rooted at root.
+''' Default score matrix from BLASTZ. '''
+score_matrix = {"A": {"A": 91, "C": -114, "T": -123, "G": -31}, "C": {"A": -114, "C": 100, "T": -31, "G": -125}, "T": {"A": -123, "C": -31, "T": 91, "G": -114}, "G": {"A": -31, "C": -125, "T": -114, "G": 100}}
 
+''' Mapping from nucleotide to integer that represents it in profile. '''
+nucleotide_mapping = {'A': 0, 'T': 1, 'G': 2, 'C': 3, '-': 4}
+
+''' Finds the post-order traversal of the tree given by tree_map rooted at root.
 Arguments:
     root: which node index represent the root
     tree_map：A dictionary storing the topology of the tree (See the description in `assemble_tree` for details).
@@ -26,23 +31,22 @@ def get_ordering(root, tree_map):
     ordering = post_order(root)
     return ordering
 
+
 ''' Creates a rooted tree using UPGMA.
 Arguments:
     D: distance matrix
 Returns:
-    E: A list storing the edges chosen from the UPGMA algorithm in the form of tuples: (index, index). 
+    E:  list storing the edges chosen from the UPGMA algorithm in the form of tuples: (index, index). 
         For example [(3,1),(3,2)] represents an rooted UPGMA tree of two edges, 
         3<-->1 and 3<-->2, where 1 & 2 are indexes of leaf nodes in the tree,
         and 3 is the index of the internal node you added.
-    uD: A dictionary of dictionary, defining distances between all nodes (leaves and internal nodes),
+    uD: dictionary of dictionary, defining distances between all nodes (leaves and internal nodes),
         it's of the same format as D, storing all edge lengths of the UPGMA tree whose topology is specified by E.
         For example, {1: {1: 0.0, 2: 1.0, 3: 1.5}, 2: {1: 1.0, 2: 0.0, 3: 2.0}, 3: {1: 1.5, 2: 2.0, 3: 0.0}}
         will fully specify the edge lengths for the tree represented by the E example ([(3,1),(3,2)]):
         Length(3<-->1) = 1.5, Length(3<-->2) = 2.0.
-    root: An integer that represents which node index represent the root.
-
-
-    cluster_counts: A list of leaf counts under the pertaining node index.
+    root: integer that represents which node index represent the root.
+    cluster_counts: list storing leaf count for each node.
 '''
 def upgma(D):
     # init
@@ -66,11 +70,11 @@ def upgma(D):
 
         # Update distance matrix:
         D[z] = {  }; uD[z] = {  }
-        count_x = cluster_counts[x]; count_y = cluster_counts[y]
+        x_count = cluster_counts[x]; y_count = cluster_counts[y]
 
         for k in D:
             if k != x and k != y and k != z:
-                d_zk = (D[x][k] * count_x + D[y][k] * count_y) / (count_x + count_y)
+                d_zk = (D[x][k] * x_count + D[y][k] * y_count) / (x_count + y_count)
                 D[z][k] = d_zk; D[k][z] = d_zk   # update D
                 uD[z][k] = d_zk; uD[k][z] = d_zk # update uD
         
@@ -86,28 +90,21 @@ def upgma(D):
             if y in D[i]: del D[i][y]
 
         E.append((z, x)); E.append((z, y)) # append to E
-        cluster_counts.append(count_x + count_y)
-
-        # print(len(cluster_counts))
-        # print("D:")
-        # print_dict_matrix(D)
-        # print("uD:")
-        # print_dict_matrix(uD)
-        # print("")
+        cluster_counts.append(x_count + y_count)
 
         n = len(D)
         z += 1
         
     root = z - 1
-    return E, uD, root
+    return E, uD, root, cluster_counts
+
 
 ''' Helper function for defining a tree data structure.
     First finds the root node and find its children, and then generates 
     the whole binary tree based on.
-
 Arguments:
     root: which node index represent the root
-    E：A list storing the edges chosen from the NJ algorithm in the form of tuples: (index, index). 
+    E： A list storing the edges chosen from the NJ algorithm in the form of tuples: (index, index). 
          (See the description in `neighbor_join` for details).
 Returns:
     tree_map：A dictionary storing the topology of the tree, where each key is a node index and each value is a list of
@@ -134,109 +131,52 @@ def assemble_tree(root, E):
     find_children(root, E)
     return tree_map
 
-''' Computes the actual string alignments given the traceback matrix.
+
+''' Aligns sequences from guide tree progressively. 
 Arguments:
-    x: the first string we're aligning
-    y: the second string we're aligning
-    t: the traceback matrix
+    sequences: list of sequences to align
+    root: root of guide tree
+    guide_tree: guide tree for profile profile alignment
+    ordering: ordering of guide tree to align sequences by
+    cluster_counts: list storing leaf count for each node
 Returns:
-    a_x: the string for the alignment of x's sequence
-    a_y: the string for the alignment of y's sequence
+    msa: list of sequences after multiple sequence alignment
 '''
-def traceback(x, y, t):
-    a_x = ""
-    a_y = ""
+def progressive_alignment(sequences, root, guide_tree, ordering, cluster_counts):
+    ordering.append(root)
+    msa = [[]] * (len(ordering))
 
-    i = len(t) - 1
-    j = len(t[0]) - 1
+    
+    # Aligning profiles up guide tree before root:
+    for i, node in enumerate(ordering):
+        # Leaf: 
+        if node < len(sequences):
+            sequence = sequences[node]
+            msa[node] = [[0.0 for _ in range(len(sequence))] for _ in range(len(nucleotide_mapping))]
+            for j, nucleotide in enumerate(sequence):
+                if nucleotide in nucleotide_mapping:
+                    msa[node][nucleotide_mapping[nucleotide]][j] = 1.0
+        # Node: 
+        else:
+            leaves = guide_tree[node]
+            x_count = cluster_counts[leaves[0]]; y_count = cluster_counts[leaves[1]]
+            score, (p_x, p_y) = profile_alignment(msa[leaves[0]], msa[leaves[1]], x_count, y_count, 60)
+            msa[node] = combine_profiles(p_x, p_y, x_count, y_count)
 
-    while (i > 0 or j > 0):
-        match t[i, j]:
-            case 0: # diagonal move
-                i -= 1
-                j -= 1
-                a_x = x[-1] + a_x
-                x = x[:-1]
-                a_y = y[-1] + a_y
-                y = y[:-1]
-            case 1: # down move
-                i -= 1
-                a_x = x[-1] + a_x
-                x = x[:-1]
-                a_y = "-" + a_y
-            case -1: # right move
-                j -= 1
-                a_x = "-" + a_x
-                a_y = y[-1] + a_y
-                y = y[:-1]
-    return a_x, a_y
+            if node == root:
+                # print_profile_matrix(msa[leaves[0]])
+                # print_profile_matrix(msa[leaves[1]])
+                # print_profile_matrix(p_x)
+                # print_profile_matrix(p_y)
 
-''' Computes the score and alignment of two strings.
-Arguments:
-    x: the first string we're aligning
-    y: the second string we're aligning
-    s: the score matrix
-    d: the gap opening/extension penalty
-Returns:
-    score: the score of the optimal sequence alignment
-    a_x: the aligned first string
-    a_y: the aligned second string
-The latter two are computed using the above traceback method.
-'''
-def sequence_alignment(x, y, s, d):
-    n = len(x)
-    m = len(y)
+                print(len(msa[leaves[0]][0]))
+                print(len(msa[leaves[1]][0]))
+                print(len(p_x[0]))
+                print(len(p_y[0]))
 
-    ''' Recurrence matrix '''
-    F = np.zeros([n + 1, m + 1])
-    ''' Traceback matrix '''
-    t = np.zeros([n + 1, m + 1])
-
-    # initializing F matrix
-    for i in range(1, n + 1):
-        F[i, 0] = F[i - 1, 0] - d
-        t[i, 0] = 1 # representing down move as 1
-
-    for j in range(1, m + 1):
-        F[0, j] = F[0, j - 1] - d
-        t[0, j] = -1 # representing right move as -1
-
-    # filling in F matrix
-    for i in range(1, n + 1):
-        for j in range(1, m + 1):
-            first_case = F[i - 1, j - 1] + s[x[i - 1]][y[j - 1]] # diagonal
-            second_case = F[i - 1, j] - d # down move
-            third_case = F[i, j - 1] - d # right move
-
-            if (first_case > second_case and first_case > third_case):
-                F[i, j] = first_case
-                t[i, j] = 0 # representing diagonal move as 0
-            elif (second_case > third_case):
-                F[i, j] = second_case
-                t[i, j] = 1 # representing down move as 1
-            else:  
-                F[i, j] = third_case
-                t[i, j] = -1 # representing right move as -1
-                
-    score = F[n, m]
-    a_x, a_y = traceback(x, y, t)
-    return score, (a_x, a_y)
-
-''' Aligns sequences from guide tree. 
     
 
-'''
-def profile_profile_alignment(sequences, tree, ordering):
-
-    # default score matrix from BLASTZ
-    score_matrix = {"A": {"A": 91, "C": -114, "T": -123, "G": -31}, "C": {"A": -114, "C": 100, "T": -31, "G": -125}, "T": {"A": -123, "C": -31, "T": 91, "G": -114}, "G": {"A": -31, "C": -125, "T": -114, "G": 100}}
-
-    print(score_matrix)
-
-
-
-
-    return 0
+    return msa
 
 
 '''
@@ -244,35 +184,35 @@ Input: sequences: list of sequences (not alligned)
 Output: a multiple sequence allignment
 '''
 def muscle(sequences):
-    
+
     # Muscle Step 1: Draft Progressive
     # 1.1 k-mer counting
-    kmer_matrix = matrix_to_dict(get_distance_matrix(sequences, "kmers", 5)) # k-mer distance matrix
-    # 1.2 UPGMA
-
-    # remove later
+    kmer_matrix = matrix_to_dict(get_distance_matrix(sequences, "kmers", 5))
+    # EXAMPLE: 
     kmer_matrix = matrix_to_dict([ [0, 17, 21, 31, 23], [17, 0, 30, 34, 21], [21, 30, 0, 28, 39], [31, 34, 28, 0, 43], [23, 21, 39, 43, 0] ])
-
-    E, uD, root = upgma(kmer_matrix)
-    tree1 = assemble_tree(root, E) # TREE1
-
+    # 1.2 UPGMA
+    E, uD, root, cluster_counts = upgma(kmer_matrix)
+    tree1 = assemble_tree(root, E)
+    # EXAMPLE: 
+    tree1 = {5: [0, 1], 6: [3, 4], 7: [5, 2], 8: [6, 7]}
+    cluster_counts = [1, 1, 1, 1, 1, 2, 2, 3, 5]
     # 1.3 progressive alignment
     post_ordering = get_ordering(root, tree1)
-    # print(post_ordering)
-    msa1 = profile_profile_alignment(sequences, tree1, post_ordering) # MSA1
-
-    # print(E)
-    # print(dict_to_matrix(uD))
-    # print(root)
-    # print(tree1)
+    msa1 = progressive_alignment(sequences, root, tree1, post_ordering, cluster_counts)
+    # print_profiles(msa1)
 
     # Muscle Step 2: Improved progressive
+    msa1_sequences = []
+    for i in range(len(msa1)):
+        msa1_sequences.append(get_profile_sequence(msa1[i]))
     # 2.1 kimura distance
-    # use MSA1
+    # kimura_matrix = matrix_to_dict(get_distance_matrix(msa1_sequences, "kimura"))
     # 2.2 UPGMA
+    # E, uD, root, cluster_counts = upgma(kimura_matrix)
+    # tree2 = assemble_tree(root, E)
     # 2.3 progressive alignment
-    # MSA2 is computed
-
+    # post_ordering = get_ordering(root, tree2)
+    # msa2 = progressive_alignment(sequences, root, tree2, post_ordering, cluster_counts)
 
 
     # make 2D matrix with kimura distance for each of the allignments
@@ -289,6 +229,7 @@ def muscle(sequences):
 
 def main():
     sequences = ["CAGGATTAG", "CAGGTTTAG", "CATTTTAG", "ACGTTAA", "ATGTTAA"]
+    # PRINT STATEMENTS
     # print(pairwise_distance(sequences[3], sequences[2]))
     # print(kmerdistance(5, sequences[0], sequences[1]))
 

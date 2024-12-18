@@ -59,6 +59,7 @@ def kimura_distance(x, y):
     n = len(x)
     transitions = 0
     transversions= 0
+
     for i in range(n):
         if x[i] != "-" and y[i] != "-":
             if is_transition(x[i], y[i]):
