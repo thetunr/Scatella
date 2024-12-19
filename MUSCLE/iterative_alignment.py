@@ -1,4 +1,5 @@
 import numpy as np
+import copy
 from distance_matrix import get_distance_matrix
 from profile_functions import profile_alignment, combine_profiles, get_profile_sequence
 from print_matrix import matrix_to_dict, dict_to_matrix, print_dict_matrix, print_profiles, print_profile_matrix, print_profile_sequence
@@ -142,13 +143,15 @@ Arguments:
 Returns:
     msa: list of sequences after multiple sequence alignment
 '''
-def progressive_alignment(sequences, root, guide_tree, ordering, cluster_counts):
+def progressive_alignment(sequences, root, guide_tree, ordering, cluster_counts = []):
     ordering.append(root)
-    msa = [[]] * (len(ordering))
-    msa_sequences = [[] for _ in range(len(ordering))] # MSA SEQUENCES
+    # msa = [[]] * (len(ordering))
+    msa = [[]] * (2 * len(sequences) - 1)
+    # msa_sequences = [[] for _ in range(len(ordering))] # MSA SEQUENCES
+    msa_sequences = [[] for _ in range((2 * len(sequences) - 1))] # MSA SEQUENCES
 
     # Aligning profiles up guide tree before root:
-    for i, node in enumerate(ordering):
+    for node in ordering:
         # Leaf: 
         if node < len(sequences):
             sequence = sequences[node]
@@ -160,21 +163,26 @@ def progressive_alignment(sequences, root, guide_tree, ordering, cluster_counts)
         # Node: 
         else:
             leaves = guide_tree[node]
-            x_leaf = leaves[0]; y_leaf = leaves[1]            
-            x_count = len(msa_sequences[x_leaf]); y_count = len(msa_sequences[y_leaf]) # MSA SEQUENCES            
-            score, (p_x, p_y), x_gaps, y_gaps = profile_alignment(msa[x_leaf], msa[y_leaf], x_count, y_count, 60)
-            msa[node] = combine_profiles(p_x, p_y, x_count, y_count)
-            msa_sequences[node] = msa_sequences[x_leaf] + msa_sequences[y_leaf]
+            if len(leaves) == 1:
+                leaf = leaves[0]
+                msa[node] = msa[leaf]
+                msa_sequences[node] = msa_sequences[leaf]
+            else:
+                x_leaf = leaves[0]; y_leaf = leaves[1]            
+                x_count = len(msa_sequences[x_leaf]); y_count = len(msa_sequences[y_leaf]) # MSA SEQUENCES            
+                score, (p_x, p_y), x_gaps, y_gaps = profile_alignment(msa[x_leaf], msa[y_leaf], x_count, y_count, 60)
+                msa[node] = combine_profiles(p_x, p_y, x_count, y_count)
+                msa_sequences[node] = msa_sequences[x_leaf] + msa_sequences[y_leaf]
 
-            gap_probs = [0.0 for _ in range(len(nucleotide_mapping) - 1)] + [1.0]
-            for node in msa_sequences[x_leaf]:
-                for x_i in x_gaps:
-                    for row, value in zip(msa[node], gap_probs):
-                        row.insert(x_i, value)
-            for node in msa_sequences[y_leaf]:
-                for y_i in y_gaps:
-                    for row, value in zip(msa[node], gap_probs):
-                        row.insert(y_i, value)
+                gap_probs = [0.0 for _ in range(len(nucleotide_mapping) - 1)] + [1.0]
+                for node in msa_sequences[x_leaf]:
+                    for x_i in x_gaps:
+                        for row, value in zip(msa[node], gap_probs):
+                            row.insert(x_i, value)
+                for node in msa_sequences[y_leaf]:
+                    for y_i in y_gaps:
+                        for row, value in zip(msa[node], gap_probs):
+                            row.insert(y_i, value)
 
     return msa
 
@@ -192,7 +200,16 @@ def get_msa_sequences(sequences, msa):
         msa_sequences.append(get_profile_sequence(msa[i]))
     return msa_sequences
 
-
+'''
+'''
+def merge_msa(msa1, msa2):
+    merged_msa = [[]] * len(msa1)
+    for i in range(len(msa1)):
+        if msa1[i] == []:
+            merged_msa[i] = msa2[i]
+        else:
+            merged_msa[i] = msa1[i]
+    return merged_msa
 '''
 Input: sequences: list of sequences (not alligned)
 Output: a multiple sequence allignment
@@ -228,11 +245,50 @@ def muscle(sequences):
     # CAN BE ITERATED
 
     # Muscle Step 3: Refinement
-    
-    # Split tree into two subtrees
-    # Make profiles of each half of the tree
-    # Re-align profiles
-    # Accept or reject new alignment
+    tree2 = {key: tree2[key] for key in sorted(tree2)}
+    # print(tree2)
+    # print(post_ordering)
+    for i, node in enumerate(tree2): # For each node / two edges
+        # For each leaf of the node
+        for leaf in tree2[node]:
+            # Split tree into two subtrees
+            tree2A = {}
+            seqs2A = []
+            visit = [leaf]
+            while visit != []:
+                if visit[0] in tree2:
+                    tree2A[visit[0]] = tree2[visit[0]]
+                    visit += tree2[visit[0]]
+                seqs2A.append(visit[0])
+                visit.remove(visit[0])
+            tree2B = {key: [val for val in val_list if val not in seqs2A] for key, val_list in tree2.items() if key not in tree2A}
+            seqs2B = [val for val in post_ordering if val not in seqs2A]            
+            seqs2A.reverse()
+            # Make profiles of each half of the tree
+            msa2A = progressive_alignment(sequences, leaf, tree2A, seqs2A.copy())
+            msa2B = progressive_alignment(sequences, node, tree2B, seqs2B.copy())
+            msa2AB = merge_msa(msa2A, msa2B)
+            msa2AB_seqs = get_msa_sequences(sequences, msa2AB)
+            # Re-align profiles
+            x_count = len([val for val in post_ordering if val in seqs2A])
+            y_count = len([val for val in post_ordering if val in seqs2B])
+            score, (p_x, p_y), x_gaps, y_gaps = profile_alignment(msa2A[leaf], msa2B[node], x_count, y_count, 60)
+            for seq_node in seqs2A:
+                if seq_node < len(sequences):
+                    for x_i in x_gaps:
+                        s = msa2AB_seqs[seq_node]
+                        msa2AB_seqs[seq_node] = s[:x_i] + '-' + s[x_i:]
+            for seq_node in seqs2B:
+                if seq_node < len(sequences):
+                    for y_i in y_gaps:
+                        s = msa2AB_seqs[seq_node]
+                        msa2AB_seqs[seq_node] = s[:y_i] + '-' + s[y_i:]
+            print("node: ", node, ", leaf: ", leaf)
+            print(msa2AB_seqs)
+
+            # Accept or reject new alignment
+            
+            
 
 def main():
     sequences = ["CAGGATTAG", "CAGGTTTAG", "CATTTTAG", "ACGTTAA", "ATGTTAA"]
