@@ -20,6 +20,7 @@ while pruning the candidate set (I don't want to do this)
 
 import numpy as np
 import argparse
+from collections import Counter
 
 def read_data(distances_file):
     with open(distances_file, "r") as f:
@@ -177,6 +178,67 @@ def get_ordering(fake_root, tree_map):
         return rights + lefts
     ordering = post_order(fake_root)
     return ordering
+
+
+
+'''
+Computes the k-mer distance score of two strings.
+Arguments:
+    k: the value of k
+    x: the first string we're aligning
+    y: the second string we're aligning
+Returns:
+    score: the score of the optimal sequence alignment
+'''
+def kmerdistance(k, x, y):
+  # Step 1: Extract k-mers from each string
+  def get_kmers(s, k):
+      """Generate all k-mers from the input string s."""
+      return [s[i:i+k] for i in range(len(s) - k + 1)]
+  
+  # Generate k-mers for both strings
+  kmers_x = get_kmers(x, k)
+  kmers_y = get_kmers(y, k)
+  
+  # Step 2: Count occurrences of each k-mer
+  count_x = Counter(kmers_x)
+  count_y = Counter(kmers_y)
+  
+  # Step 3: Compute shared k-mers (intersection of k-mers in x and y)
+  shared_kmers = sum((count_x & count_y).values())  # Intersection counts
+  
+  # Step 4: Compute total unique k-mers across both strings
+  total_kmers_x = sum(count_x.values())
+  total_kmers_y = sum(count_y.values())
+  
+  # Total k-mers in both sequences
+  total_kmers = total_kmers_x + total_kmers_y
+  
+  # Step 5: Compute the k-mer distance score
+  # Distance score = total kmers - 2 * shared kmers
+  score = total_kmers - 2 * shared_kmers
+    
+  return score
+    
+
+'''
+Replaces all "N"'s in a given sequence with gaps.
+Arguments:
+    data: sequence data (dict: name of sequence owner -> sequence)
+Returns:
+    replaced_data: sequence data with no N's
+'''
+def n_remover(data):
+    replaced_data = {}
+    for name, sequence in data.items():
+        replaced_sequence = sequence.replace("N", "-")
+        replaced_data[name] = replaced_sequence
+    
+    return replaced_data
+
+
+
+
 
 ''' Returns a string of the Newick tree format for the tree, rooted at a pre-defined node (fake_root).
 
