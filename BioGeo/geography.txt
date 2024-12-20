@@ -1,5 +1,0 @@
-Species	Area1	Area2
-A	1	0
-B	1	0
-C	0	1
-D	0	1
