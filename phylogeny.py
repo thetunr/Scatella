@@ -1,14 +1,18 @@
 '''
 TODOS:
-MAXIMUM LIKELIHOOD BRANCH OPTIMIZATION - phyml
+MAXIMUM LIKELIHOOD BRANCH OPTIMIZATION - PhyML
     1. add kmer distance/pairwise distance matrix maker function
-    2. reformat sequence alignment to either be all gaps or all 'N's whichever we want
+    2. reformat sequence alignment to either be all gaps or all 'N's whichever we want (might want to swap these tasks)
     3. future step: have geneious make NJ tree to save some time and we just parse a tree from what NJ gives us
+    -- iterate over all E for loop --
     4. compute conditional likelihoods for each U and V possible (3 in total)
     5. determine if La, Lb, or Lc is better and compute score if swapping
+    -- end loop --
+    -- while loop till convergence --
     6. rank possible swaps by score, if two swaps are from adjacent branches, keep only the one with the higher score
     7. start with lambda = 1 and perform lambda swaps and set unswapped branches to l = l + lambda(la-l)
     8. divide lambda by 2 and start all over again if likelihood goes down
+    -- end loop --
     9. repeat process until convergence
 if we want to do more, we can do IQ-TREE which involves using a candidate set of 100 possible trees and doing the same shit
 while pruning the candidate set (I don't want to do this)
@@ -216,7 +220,7 @@ def make_tree(dist_m):
     mapping = dict(enumerate(range(len(D))))
     og = 0
     E, uD, fake_root = neighbor_join(D, og)
-    tree_map = assemble_tree(fake_root, E)
+    tree_map = assemble_rooted_tree(fake_root, E)
     ordering = get_ordering(fake_root, tree_map)
     print(ordering)
     nwk_str = generate_newick(fake_root, tree_map, uD, mapping)
