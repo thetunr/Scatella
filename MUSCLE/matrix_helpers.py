@@ -1,6 +1,23 @@
 import numpy as np
 from collections import Counter
 
+''' Converts 2d array matrix to 2d dictionary matrix. '''
+def matrix_to_dict(matrix):
+    D = {}
+    for i, row in enumerate(matrix):
+        D[i] = {j: val for j, val in enumerate(row)}
+    return D
+
+''' Converts 2d dictionary matrix to 2d array matrix. '''
+def dict_to_matrix(D):
+    num_rows = max(D.keys()) + 1
+    num_cols = max(max(row.keys()) for row in D.values()) + 1 if D else 0
+    matrix = [[0 for _ in range(num_cols)] for _ in range(num_rows)]
+    for i, row in D.items():
+        for j, val in row.items():
+            matrix[i][j] = val
+    return matrix
+
 ''' Generate all k-mers from the input string s. '''
 def get_kmers(s, k):
     return [s[i:i+k] for i in range(len(s) - k + 1)]
@@ -38,8 +55,7 @@ def kmerdistance(k, x, y):
     
   return score
 
-''' Returns True if a and b represent a transition, False if transversion
-'''
+''' Returns True if a and b represent a transition, False if transversion. '''
 def is_transition(a, b):
     if a == "A" or a == "G":
         if b == "A" or b == "G":

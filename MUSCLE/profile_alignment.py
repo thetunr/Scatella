@@ -1,6 +1,5 @@
 import numpy as np
-from distance_matrix import get_distance_matrix
-from print_matrix import matrix_to_dict, dict_to_matrix, print_dict_matrix, print_profiles, print_profile_matrix, print_profile_sequence
+import math
 
 ''' Default score matrix from BLASTZ. '''
 score_matrix = {"A": {"A": 91, "C": -114, "T": -123, "G": -31}, "C": {"A": -114, "C": 100, "T": -31, "G": -125}, "T": {"A": -123, "C": -31, "T": 91, "G": -114}, "G": {"A": -31, "C": -125, "T": -114, "G": 100}}
@@ -13,11 +12,11 @@ nucleotide_list = ['A', 'T', 'G', 'C', '-']
 
 
 ''' Computes log expectation score for two probability vectors. '''
-def log_expectation_score(x_probs, y_probs, epsilon = 1e-10):
-    np_x = np.array(x_probs)
-    np_y = np.array(y_probs)
-    return np.sum(np_x * np.log((np_x + epsilon) / (np_y + epsilon)))
-
+def log_expectation_score(x_probs, y_probs, epsilon=1e-10):
+    score = 0
+    for x, y in zip(x_probs, y_probs):
+        score += x * math.log((x + epsilon) / (y + epsilon))
+    return score
 
 ''' Computes the actual string alignments given the traceback matrix.
 Arguments:
@@ -116,6 +115,10 @@ def profile_alignment(x, y, x_count, y_count, d):
     # filling in F matrix
     for i in range(1, n + 1):
         for j in range(1, m + 1):
+            # print('profile alignment: i - ', i, ", j - ", j)
+            if i % 100 == 0 and j == 1:
+                print('profile alignment: i - ', i)
+            
             x_probs = [row[i - 1] for row in x]
             y_probs = [row[j - 1] for row in y]
 
@@ -139,7 +142,7 @@ def profile_alignment(x, y, x_count, y_count, d):
             else:  
                 F[i, j] = third_case
                 t[i, j] = -1 # representing right move as -1
-                
+    
     score = F[n, m]
     p_x, p_y, x_gaps, y_gaps = profile_traceback(x, y, t)
 

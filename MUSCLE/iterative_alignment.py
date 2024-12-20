@@ -1,8 +1,13 @@
 import numpy as np
 import copy
-from distance_matrix import get_distance_matrix
-from profile_functions import profile_alignment, combine_profiles, get_profile_sequence
-from print_matrix import matrix_to_dict, dict_to_matrix, print_dict_matrix, print_profiles, print_profile_matrix, print_profile_sequence
+import argparse
+import json
+import time
+from matrix_helpers import get_distance_matrix, matrix_to_dict, dict_to_matrix
+from profile_alignment import profile_alignment, combine_profiles, get_profile_sequence
+from msa_helpers import get_msa_sequences, merge_msa
+from refinement import tree_bipartition, insert_gaps_sequences, subst, gap_cost, compute_gap_intervals, compute_sp_score
+from print_helpers import print_dict_matrix, print_profiles, print_profile_matrix, print_profile_sequence
 
 ''' Default score matrix from BLASTZ. '''
 score_matrix = {"A": {"A": 91, "C": -114, "T": -123, "G": -31}, "C": {"A": -114, "C": 100, "T": -31, "G": -125}, "T": {"A": -123, "C": -31, "T": 91, "G": -114}, "G": {"A": -31, "C": -125, "T": -114, "G": 100}}
@@ -141,17 +146,19 @@ Arguments:
     ordering: ordering of guide tree to align sequences by
     cluster_counts: list storing leaf count for each node
 Returns:
-    msa: list of sequences after multiple sequence alignment
+    msa: list of profiles after multiple sequence alignment
 '''
 def progressive_alignment(sequences, root, guide_tree, ordering, cluster_counts = []):
     ordering.append(root)
-    # msa = [[]] * (len(ordering))
     msa = [[]] * (2 * len(sequences) - 1)
-    # msa_sequences = [[] for _ in range(len(ordering))] # MSA SEQUENCES
     msa_sequences = [[] for _ in range((2 * len(sequences) - 1))] # MSA SEQUENCES
 
+    nodes_completed = 0
     # Aligning profiles up guide tree before root:
     for node in ordering:
+        print("Completed ", nodes_completed, " out of ", len(ordering))
+        nodes_completed += 1
+
         # Leaf: 
         if node < len(sequences):
             sequence = sequences[node]
@@ -187,117 +194,144 @@ def progressive_alignment(sequences, root, guide_tree, ordering, cluster_counts 
     return msa
 
 
-''' Returns aligned sequences given MSA profiles. 
+''' Performs MUSCLE on list of sequences. 
 Arguments: 
-    sequences: sequences to be aligned
-    msa: profiles
+    sequences: list of sequences
 Return:
-    msa_sequences: aligned sequences from profiles
-'''
-def get_msa_sequences(sequences, msa):
-    msa_sequences = []
-    for i in range(len(sequences)):
-        msa_sequences.append(get_profile_sequence(msa[i]))
-    return msa_sequences
-
-'''
-'''
-def merge_msa(msa1, msa2):
-    merged_msa = [[]] * len(msa1)
-    for i in range(len(msa1)):
-        if msa1[i] == []:
-            merged_msa[i] = msa2[i]
-        else:
-            merged_msa[i] = msa1[i]
-    return merged_msa
-'''
-Input: sequences: list of sequences (not alligned)
-Output: a multiple sequence allignment
+    msa_seqs: list of aligned sequences
 '''
 def muscle(sequences):
-    # Muscle Step 1: Draft Progressive
-    # 1.1 k-mer counting
-    kmer_matrix = matrix_to_dict(get_distance_matrix(sequences, "kmers", 5))
-    # EXAMPLE: 
-    kmer_matrix = matrix_to_dict([ [0, 17, 21, 31, 23], [17, 0, 30, 34, 21], [21, 30, 0, 28, 39], [31, 34, 28, 0, 43], [23, 21, 39, 43, 0] ])
-    # 1.2 UPGMA
-    E, uD, root, cluster_counts = upgma(kmer_matrix)
-    tree1 = assemble_tree(root, E)
-    # EXAMPLE: 
-    tree1 = {5: [0, 1], 6: [3, 4], 7: [5, 2], 8: [6, 7]}
-    cluster_counts = [1, 1, 1, 1, 1, 2, 2, 3, 5]
-    # 1.3 progressive alignment
-    post_ordering = get_ordering(root, tree1)
-    msa1 = progressive_alignment(sequences, root, tree1, post_ordering, cluster_counts)
-    msa1_sequences = get_msa_sequences(sequences, msa1)
+    # MUSCLE Step 1: Draft Progressive
+        print("MUSCLE Step 1 begin.")
+        start_time = time.time()
+        # 1.1 k-mer counting
+        kmer_matrix = matrix_to_dict(get_distance_matrix(sequences, "kmers", 5))
+        # 1.2 UPGMA
+        E, uD, root, cluster_counts = upgma(kmer_matrix)
+        tree1 = assemble_tree(root, E)
+        # 1.3 progressive alignment
+        post_ordering_tree1 = get_ordering(root, tree1)
+        print("entering progressive_alignment")
+        msa1 = progressive_alignment(sequences, root, tree1, post_ordering_tree1, cluster_counts)
+        print("completed progressive_alignment")
+        msa1_seqs = get_msa_sequences(sequences, msa1)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print(f"MUSCLE Step 1 completed in {elapsed_time:.2f} seconds.\n---------------------")
     
-    # Muscle Step 2: Improved progressive
-    # 2.1 kimura distance
-    kimura_matrix = matrix_to_dict(get_distance_matrix(msa1_sequences, "kimura"))
-    # 2.2 UPGMA
-    E, uD, root, cluster_counts = upgma(kimura_matrix)
-    tree2 = assemble_tree(root, E)
-    # 2.3 progressive alignment
-    post_ordering = get_ordering(root, tree2)
-    msa2 = progressive_alignment(sequences, root, tree2, post_ordering, cluster_counts)
-    msa2_sequences = get_msa_sequences(sequences, msa2)
-    print(msa2_sequences)
-    # CAN BE ITERATED
+    # MUSCLE Step 2: Improved progressive (CAN BE ITERATED)
+        print("MUSCLE Step 2 begin.")
+        start_time = time.time()
+        # 2.1 kimura distance
+        kimura_matrix = matrix_to_dict(get_distance_matrix(msa1_seqs, "kimura"))
+        # 2.2 UPGMA
+        E, uD, root, cluster_counts = upgma(kimura_matrix)
+        tree2 = assemble_tree(root, E)
+        # 2.3 progressive alignment
+        post_ordering_tree2 = get_ordering(root, tree2)
+        msa2 = progressive_alignment(sequences, root, tree2, post_ordering_tree2, cluster_counts)
+        msa2_seqs = get_msa_sequences(sequences, msa2)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print(f"MUSCLE Step 2 completed in {elapsed_time:.2f} seconds.\n---------------------")
 
-    # Muscle Step 3: Refinement
-    tree2 = {key: tree2[key] for key in sorted(tree2)}
-    # print(tree2)
-    # print(post_ordering)
-    for i, node in enumerate(tree2): # For each node / two edges
-        # For each leaf of the node
-        for leaf in tree2[node]:
-            # Split tree into two subtrees
-            tree2A = {}
-            seqs2A = []
-            visit = [leaf]
-            while visit != []:
-                if visit[0] in tree2:
-                    tree2A[visit[0]] = tree2[visit[0]]
-                    visit += tree2[visit[0]]
-                seqs2A.append(visit[0])
-                visit.remove(visit[0])
-            tree2B = {key: [val for val in val_list if val not in seqs2A] for key, val_list in tree2.items() if key not in tree2A}
-            seqs2B = [val for val in post_ordering if val not in seqs2A]            
-            seqs2A.reverse()
-            # Make profiles of each half of the tree
-            msa2A = progressive_alignment(sequences, leaf, tree2A, seqs2A.copy())
-            msa2B = progressive_alignment(sequences, node, tree2B, seqs2B.copy())
-            msa2AB = merge_msa(msa2A, msa2B)
-            msa2AB_seqs = get_msa_sequences(sequences, msa2AB)
-            # Re-align profiles
-            x_count = len([val for val in post_ordering if val in seqs2A])
-            y_count = len([val for val in post_ordering if val in seqs2B])
-            score, (p_x, p_y), x_gaps, y_gaps = profile_alignment(msa2A[leaf], msa2B[node], x_count, y_count, 60)
-            for seq_node in seqs2A:
-                if seq_node < len(sequences):
-                    for x_i in x_gaps:
-                        s = msa2AB_seqs[seq_node]
-                        msa2AB_seqs[seq_node] = s[:x_i] + '-' + s[x_i:]
-            for seq_node in seqs2B:
-                if seq_node < len(sequences):
-                    for y_i in y_gaps:
-                        s = msa2AB_seqs[seq_node]
-                        msa2AB_seqs[seq_node] = s[:y_i] + '-' + s[y_i:]
-            print("node: ", node, ", leaf: ", leaf)
-            print(msa2AB_seqs)
+    # MUSCLE Step 3: Refinement
+        print("MUSCLE Step 3 begin.")
+        start_time = time.time()
+        best_msa = msa2_seqs
+        sp_max = compute_sp_score(msa2_seqs, subst, gap_cost)
+        tree2 = {key: tree2[key] for key in sorted(tree2)}
+        for node in tree2: # For each node / two edges
+            # For each leaf of the node
+            for leaf in tree2[node]:
+                # Split tree into two subtrees
+                tree2A, tree2B, seqs2A, seqs2B = tree_bipartition(leaf, tree2, post_ordering_tree2)
+                # Make profiles of each half of the tree
+                msa2A = progressive_alignment(sequences, leaf, tree2A, seqs2A.copy())
+                msa2B = progressive_alignment(sequences, node, tree2B, seqs2B.copy())
+                msa2AB = merge_msa(msa2A, msa2B)
+                msa2AB_seqs = get_msa_sequences(sequences, msa2AB)
+                # Re-align profiles
+                x_count = len([val for val in post_ordering_tree2 if val in seqs2A])
+                y_count = len([val for val in post_ordering_tree2 if val in seqs2B])
+                score, (p_x, p_y), x_gaps, y_gaps = profile_alignment(msa2A[leaf], msa2B[node], x_count, y_count, 60)
+                msa2AB_seqs = insert_gaps_sequences(msa2AB_seqs, seqs2A, x_gaps, len(sequences))
+                msa2AB_seqs = insert_gaps_sequences(msa2AB_seqs, seqs2B, y_gaps, len(sequences))
+                # Accept or reject new alignment
+                sp_score = compute_sp_score(msa2AB_seqs, subst, gap_cost)
+                # PRINT STATEMENTS
+                # print("node: ", node, ", leaf: ", leaf)
+                # print(msa2AB_seqs)
+                # print("SP score: ", sp_score)
+                if sp_score > sp_max:
+                    print("sp max changed")
+                    sp_max = sp_score
+                    best_msa = msa2AB_seqs
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        print(f"MUSCLE Step 3 completed in {elapsed_time:.2f} seconds.\n---------------------")
+        return best_msa
 
-            # Accept or reject new alignment
-            
-            
+
+''' Parses FASTA file and returns list of sequences, ignoring descriptions.
+Arguments:
+    faste_file: directory of the file
+Returns:
+    sequences: list of sequences as a list of strings
+'''
+def parse_fasta(fasta_file):
+    sequences = []
+    with open(fasta_file) as f:
+        sequence = ""
+        for line in f:
+            line = line.strip()
+            if line.startswith(">"):
+                if sequence:
+                    sequences.append(sequence)
+                    sequence = ""
+            else:
+                sequence += line
+        if sequence: 
+            sequences.append(sequence)
+    return sequences
+
 
 def main():
-    sequences = ["CAGGATTAG", "CAGGTTTAG", "CATTTTAG", "ACGTTAA", "ATGTTAA"]
-    # PRINT STATEMENTS
-    # print(pairwise_distance(sequences[3], sequences[2]))
-    # print(kmerdistance(5, sequences[0], sequences[1]))
+    parser = argparse.ArgumentParser(
+        description='Calculate sequence alignments for multiple sequences.')
+    parser.add_argument('-f', action="store", dest="f", type=str, required=True)
+    parser.add_argument('-s', action="store", dest="s", type=str, required=True)
+    parser.add_argument('-d', action="store", dest="d", type=float, required=True)
+    parser.add_argument('-e', action="store", dest="e", type=float, required=True)
 
-    muscle(sequences)
+    args = parser.parse_args()
+    fasta_file = args.f
+    score_matrix_file = args.s
+    d = args.d
+    e = args.e
+
+    sequences = parse_fasta(fasta_file)
+    print("Sequences parsed from FASTA:")
+    print(len(sequences))
+    # for i, sequence in enumerate(sequences):
+    #     print(f"Sequence {i+1}: Length = {len(sequence)}")
+
+    # with open(score_matrix_file) as f:
+    #     s = json.loads(f.read().strip())
+
+    # sequences = ["CAGGATTAG", "CAGGTTTAG", "CATTTTAG", "ACGTTAA", "ATGTTAA"]
+    msa_seqs = muscle(sequences)
+    print(msa_seqs)
     
 
 if __name__ == "__main__":
     main()
+
+
+
+
+# EXAMPLE: 
+# kmer_matrix = matrix_to_dict([ [0, 17, 21, 31, 23], [17, 0, 30, 34, 21], [21, 30, 0, 28, 39], [31, 34, 28, 0, 43], [23, 21, 39, 43, 0] ])
+# EXAMPLE: 
+# tree1 = {5: [0, 1], 6: [3, 4], 7: [5, 2], 8: [6, 7]}
+# cluster_counts = [1, 1, 1, 1, 1, 2, 2, 3, 5]
