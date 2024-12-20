@@ -1,3 +1,19 @@
+'''
+TODOS:
+MAXIMUM LIKELIHOOD BRANCH OPTIMIZATION - phyml
+    1. add kmer distance/pairwise distance matrix maker function
+    2. reformat sequence alignment to either be all gaps or all 'N's whichever we want
+    3. future step: have geneious make NJ tree to save some time and we just parse a tree from what NJ gives us
+    4. compute conditional likelihoods for each U and V possible (3 in total)
+    5. determine if La, Lb, or Lc is better and compute score if swapping
+    6. rank possible swaps by score, if two swaps are from adjacent branches, keep only the one with the higher score
+    7. start with lambda = 1 and perform lambda swaps and set unswapped branches to l = l + lambda(la-l)
+    8. divide lambda by 2 and start all over again if likelihood goes down
+    9. repeat process until convergence
+if we want to do more, we can do IQ-TREE which involves using a candidate set of 100 possible trees and doing the same shit
+while pruning the candidate set (I don't want to do this)
+'''
+
 import numpy as np
 import argparse
 
@@ -34,7 +50,7 @@ Returns:
         Length(3<-->1) = 1.5, Length(3<-->2) = 2.0.
     fake_root: which node index represent the root
 '''
-def neighbor_join(D, og):
+def neighbor_join(D):
     # init
     E = []
     uD = {i: {j: val for j, val in D[i].items()} for i in D}
@@ -85,18 +101,20 @@ def neighbor_join(D, og):
     last_pair = list(D.keys())
     E.append((last_pair[0], last_pair[1]))
 
-    for i in range(0, len(E)):
-        x, y = E[i]
-        if x == og or y == og:
-            del E[i]
-            E.append((z, x)); E.append((z, y))
-            dist = uD[x][y] / 2
-            uD[z] = {}
-            uD[z][x] = dist; uD[z][y] = dist
-            fake_root = z
-            break
+    # IMPORTANT: code that uses the outgroup, og to create a fake root, turning the tree into a rooted tree
+
+    # for i in range(0, len(E)):
+    #     x, y = E[i]
+    #     if x == og or y == og:
+    #         del E[i]
+    #         E.append((z, x)); E.append((z, y))
+    #         dist = uD[x][y] / 2
+    #         uD[z] = {}
+    #         uD[z][x] = dist; uD[z][y] = dist
+    #         fake_root = z
+    #         break
     
-    return E, uD, fake_root
+    return E, uD
 
 
 ''' Helper function for defining a tree data structure.
@@ -112,8 +130,7 @@ Returns:
               node indices of the direct children nodes of the key, of at most length 2. For example, {3: [1, 2], 2: [], 1: []}
               represents the tree with 1 internal node (3) and two leaves (1, 2). the [] value shows the leaf node status.
 '''
-def assemble_tree(fake_root, E):
-    ''' Complete this function. '''
+def assemble_rooted_tree(fake_root, E):
     tree_map = {}
     def find_children(parent, E):
         for l, r in E:
@@ -219,8 +236,8 @@ Returns:
 def jcm(b, a, t, u = 1.0):
     ''' Complete this function. '''
     if b == a:
-        return 0.25 * (1 + (3 * np.exp(-4 / 3 * u * t)))
-    return 0.25 * (1 - np.exp(-4 / 3 * u * t))
+        return 0.2 * (1 + (4 * np.exp(-5 * u * t)))
+    return 0.2 * (1 - np.exp(-5 * u * t))
 
 def main():
     distances = [[0,5,9,9,8],[5,0,10,10,9],[9,10,0,8,7],[9,10,8,0,3],[8,9,7,3,0]]
