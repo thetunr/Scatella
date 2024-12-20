@@ -1,0 +1,4 @@
+n 5 (A B C D E)
+Species1  00100
+Species2  10000
+...
