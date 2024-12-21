@@ -19,7 +19,7 @@ import numpy as np
 import argparse
 import tree_helpers as th
 import sequence_helpers as sh
-
+from scipy.optimize import minimize_scalar
 
 ''' 
 Evaluates P(b|a, t) under the Jukes-Cantor model
@@ -67,9 +67,9 @@ def make_tree(sequences, size):
             subtrees[2 + i] = th.get_ordering(v[i], treemaps[2 + i])
         
         likelihoods = {}
-        print(sequences)
+        print(subtrees)
         for i in subtrees:
-            # likelihoods[i] = likelihood(sequences, size, subtrees[i], treemaps[i], mapping, uD)
+            likelihoods[i] = likelihood(sequences, size, subtrees[i], treemaps[i], mapping, uD)
             pass
         #internal edge
         if 0 and 2 in likelihoods:
@@ -129,9 +129,12 @@ def likelihood(data, seqlen, ordering, treemap, mapping, ud):
                     l[index][node_idx][i] = left_prob * right_prob
                     
         root = ordering[-1]  
-        prob = 0
-        for i in range(5):
-            prob += l[index][root][i] * 0.20
+
+        def t_helper(t):
+            prob = 0.0
+            for i in range(5):
+                prob += l[index][root][i] * 0.20 * jcm(data[mapping][root][index], bases[i], t) 
+
 
         total_log_prob += np.log(prob)
     return total_log_prob
@@ -141,7 +144,7 @@ def likelihood(data, seqlen, ordering, treemap, mapping, ud):
 def main():
     parser = argparse.ArgumentParser(
         description='Maximum Likelihood phylogeny on a set of sequences')
-    parser.add_argument('-f', action="store", dest="f", type=str, default='data/geneious_msa/combo - all data - realigned - 2.fasta')
+    parser.add_argument('-f', action="store", dest="f", type=str, default='MUSCLE\output\example.fasta')
     args = parser.parse_args()
     seq_file = args.f
     sequences, size = sh.read_data(seq_file)
