@@ -35,11 +35,13 @@ Returns:
     msa_seqs: sequences after adding gaps
 '''
 def insert_gaps_sequences(msa_seqs, sequences, gaps, num_leaves):
+    inserted = 0
+    gaps = sorted(gaps)
     for seq_node in sequences:
         if seq_node < num_leaves:
             for i in gaps:
                 s = msa_seqs[seq_node]
-                msa_seqs[seq_node] = s[:i] + '-' + s[i:]
+                msa_seqs[seq_node] = s[:i + inserted] + '-' + s[i + inserted:]
     return msa_seqs
 
 
@@ -91,6 +93,8 @@ def compute_sp_score(msa_seqs, subst, gap_cost):
         for j in range(i + 1, len(msa_seqs)):
             seq_i = msa_seqs[i]
             seq_j = msa_seqs[j]
+            if len(seq_i) != len(seq_j):
+                ValueError("Sequence ", i, " does not have the same length as sequence ", j)
             # Compute substitution costs
             for k in range(len(seq_i)):
                 if seq_i[k] != '-' and seq_j[k] != '-':

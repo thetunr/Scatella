@@ -1,3 +1,4 @@
+import numpy as np
 import math
 from print_helpers import print_dict_matrix, print_profiles, print_profile_matrix, print_profile_sequence
 
@@ -39,11 +40,11 @@ def profile_traceback(x, y, t):
     j = len(y)
     gap_probs = [0.0 for _ in range(len(x[0]) - 1)] + [1.0]
     while (i > 0 or j > 0):
-        if t[i][j] == 0: # diagonal move
+        if t[i, j] == 0: # diagonal move
             p_x.append(x[i - 1])
             p_y.append(y[j - 1])
             i -= 1; j -= 1
-        elif t[i][j] == 1:   
+        elif t[i, j] == 1:   
             p_x.append(x[i - 1])
             p_y.append(gap_probs)
             i -= 1
@@ -88,23 +89,23 @@ def profile_alignment(x, y, x_count, y_count, d):
     n = len(x)
     m = len(y)
     ''' Recurrence matrix '''
-    F = [[0] * (m + 1) for _ in range(n + 1)]
+    F = np.zeros([n + 1, m + 1])
     ''' Traceback matrix '''
-    t = [[0] * (m + 1) for _ in range(n + 1)]
+    t = np.zeros([n + 1, m + 1])
 
     # initializing F matrix
     for i in range(1, n + 1):
-        F[i][0] = F[i - 1][0] - d
-        t[i][0] = 1 # representing down move as 1
+        F[i, 0] = F[i - 1, 0] - d
+        t[i, 0] = 1 # representing down move as 1
     for j in range(1, m + 1):
-        F[0][j] = F[0][j - 1] - d
-        t[0][j] = -1 # representing right move as -1
+        F[0, j] = F[0, j - 1] - d
+        t[0, j] = -1 # representing right move as -1
     
     # filling in F matrix
     for i in range(1, n + 1):
         for j in range(1, m + 1):
 
-            if i % 500 == 0 and j == 1:
+            if i % 100 == 0 and j == 1:
                 print("    profile alignment: i -", i)
 
             score = log_expectation_score(x[i - 1], y[j - 1])
@@ -117,22 +118,22 @@ def profile_alignment(x, y, x_count, y_count, d):
             # normalized_y_probs = [p / total_sum_y for p in weighted_x_probs] if total_sum_y != 0 else [0 for _ in weighted_y_probs]
             # score = log_expectation_score(normalized_x_probs, normalized_y_probs)
 
-            first_case = F[i - 1][j - 1] - score # diagonal
-            second_case = F[i - 1][j] - d # down move
-            third_case = F[i][j - 1] - d # right move
+            first_case = F[i - 1, j - 1] - score # diagonal
+            second_case = F[i - 1, j] - d # down move
+            third_case = F[i, j - 1] - d # right move
 
             # for traceback
             if (first_case >= second_case and first_case >= third_case):
-                F[i][j] = first_case
-                t[i][j] = 0 # representing diagonal move as 0
+                F[i, j] = first_case
+                t[i, j] = 0 # representing diagonal move as 0
             elif (second_case >= third_case):
-                F[i][j] = second_case
-                t[i][j] = 1 # representing down move as 1
+                F[i, j] = second_case
+                t[i, j] = 1 # representing down move as 1
             else:  
-                F[i][j] = third_case
-                t[i][j] = -1 # representing right move as -1
+                F[i, j] = third_case
+                t[i, j] = -1 # representing right move as -1
     
-    score = F[n][m]
+    score = F[n, m]
     p_x, p_y, x_gaps, y_gaps = profile_traceback(x, y, t)
 
     return score, (p_x, p_y), x_gaps, y_gaps
