@@ -1,6 +1,9 @@
 import numpy as np
 from collections import Counter
 
+''' Default score matrix from BLASTZ. '''
+score_matrix = {"A": {"A": 91, "C": -114, "T": -123, "G": -31}, "C": {"A": -114, "C": 100, "T": -31, "G": -125}, "T": {"A": -123, "C": -31, "T": 91, "G": -114}, "G": {"A": -31, "C": -125, "T": -114, "G": 100}}
+
 ''' Converts 2d array matrix to 2d dictionary matrix. '''
 def matrix_to_dict(matrix):
     D = {}
@@ -86,6 +89,9 @@ def kimura_distance(x, y):
         else:
             transversions += 1
 
+    if sites == 0:
+        return float('inf')
+
     p = transitions / sites
     q = transversions / sites
 
@@ -101,7 +107,7 @@ Returns:
 '''
 def get_distance_matrix(sequences, func, k = 0):
     m = np.zeros((len(sequences), len(sequences)))
-
+    max_dist = 0
     for s1 in range(len(sequences)):
         for s2 in range(s1 + 1, len(sequences)):
             if func == "kmers":
@@ -112,4 +118,13 @@ def get_distance_matrix(sequences, func, k = 0):
                 print("invalid function name")
             m[s1][s2] = score
             m[s2][s1] = score
+            if score > max_dist and score != float('inf'):
+                max_dist = score
+    # temporary solution for kimura distance not being computable
+    for s1 in range(len(sequences)):
+        for s2 in range(s1 + 1, len(sequences)):
+            if m[s1][s2] == float('inf'):
+                m[s1][s2] = 2 * max_dist
+                m[s2][s1] = 2 * max_dist
     return m
+
