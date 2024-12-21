@@ -1,3 +1,22 @@
+import numpy as np
+
+''' 
+Evaluates P(b|a, t) under the Jukes-Cantor model
+
+Arguments:
+    b: descendant base (string)
+    a: ancestral base (string)
+    t: branch length (float)
+    u: mutation rate (float, defaults to 1)
+Returns:
+    prob: float probability P(b|a, t)
+'''
+def jcm(b, a, t, u = 1.0):
+    ''' Complete this function. '''
+    if b == a:
+        return 0.2 * (1 + (4 * np.exp(-5 * u * t)))
+    return 0.2 * (1 - np.exp(-5 * u * t))
+
 ''' 
 Performs the neighbor joining algorithm on the distance matrix and the index of the outgroup species.
 
@@ -70,20 +89,7 @@ def neighbor_join(D):
     last_pair = list(D.keys())
     E.append((last_pair[1], last_pair[0]))
 
-    # IMPORTANT: code that uses the outgroup, og to create a fake root, turning the tree into a rooted tree
-
-    # for i in range(0, len(E)):
-    #     x, y = E[i]
-    #     if x == og or y == og:
-    #         del E[i]
-    #         E.append((z, x)); E.append((z, y))
-    #         dist = uD[x][y] / 2
-    #         uD[z] = {}
-    #         uD[z][x] = dist; uD[z][y] = dist
-    #         fake_root = z
-    #         break
-    
-    return E, uD
+    return E, uD, z
 
 '''
 Helper function to find the roots of the W, X, Y, and Z subtrees of a given edge `e` in a tree using tree
@@ -212,3 +218,119 @@ def generate_newick(fake_root, tree_map, uD, mapping = None):
         return curr
     output += newick_builder(fake_root) + ");"
     return output
+
+
+'''
+Takes an unrooted tree and an outgroup and roots the tree on the outgroup.
+
+Arguments:
+    E: A list storing the edges of a tree in the form of tuples: (index, index). 
+    og: The index of the outgroup node
+    z: The index of the root node
+    uD: the dictionary storing the lengths of the branches
+'''
+def root_tree(E, og, z, uD):
+    for i in range(len(E)):
+        l, r = E[i]
+        if l == og or r == og:
+            del E[i]
+            E.append((z, l)); E.append((z, r))
+            dist = uD[l][r] / 2
+            uD[z] = {}
+            uD[z][l] = dist; uD[z][r] = dist; uD[r][z] = dist; uD[l][z] = dist
+            break
+
+
+'''
+Takes a rooted tree and the node index of the root and removes the root.
+
+Arguments:
+    E: A list storing the edges of a tree in the form of tuples: (index, index). 
+    z: The index of the root node
+'''
+def unroot_tree(E, z):
+    old = []
+    to_remove = []
+    for i in range(len(E)):
+        l, r = E[i]
+        if len(old) == 2:
+            break
+        if l == z or r == z:
+            if l != z:
+                old.append(l)
+            else:
+                old.append(r)
+            to_remove.append(E[i])
+    E.remove(to_remove[0])
+    E.remove(to_remove[1])
+    E.append((old[0], old[1]))
+
+
+''' 
+Computes the likelihood of the data given the topology specified by `ordering`
+by editing `L`
+
+Arguments:
+    data: sequence data (dict: name of sequence owner -> sequence)
+    seqlen: length of sequences
+    ordering: postorder traversal of our topology
+    treemap: the topology of the tree in the form of a dictionary
+    mapping: the mapping of node indices to the actual sequence names
+    ud: the dictionary storing the lengths of the branches
+    L: the matrix of subtree likelihoods where L[i][j][k] is the probability of
+    sequence j at index i having base k
+    bases: a string of the possible bases in a sequence
+'''
+def likelihood(data, seqlen, ordering, treemap, mapping, ud, L, bases):
+    for index in range(seqlen):
+        for node_idx in ordering:
+            # leaf case
+            if (treemap[node_idx] == []): 
+                base = data[mapping[node_idx]][index]
+                for i in range(5):
+                    if base == bases[i]:
+                        L[index][node_idx][i] = 1.0 
+                    else:
+                        L[index][node_idx][i] = 0.0
+            # node with 2 children
+            else:
+                for i in range(5): 
+                    #init probs
+                    left_prob = 0.0
+                    right_prob = 0.0
+                    for j in range(5):
+                        #find left prob
+                        left_prob += jcm(bases[i], bases[j], ud[i][j]) * L[index][treemap[node_idx][0]][j]
+                        #find right prob
+                        right_prob += jcm(bases[i], bases[j], ud[i][j]) * L[index][treemap[node_idx][1]][j]
+                    #combine for prob at node
+                    L[index][node_idx][i] = left_prob * right_prob
+
+
+'''
+Computes the total log-likelihood of a rooted tree.
+
+Arguments:
+    z: The index of the root node
+    E: A list storing the edges of a tree in the form of tuples: (index, index). 
+    size: length of sequences
+    sequences: sequence data (dict: name of sequence owner -> sequence)
+    mapping: the mapping of node indices to the actual sequence names
+    uD: the dictionary storing the lengths of the branches
+    bases: a string of the possible bases in a sequence
+
+Returns:
+    lh: the log-likelihood of the tree
+'''
+def total_likelihood(z, E, size, sequences, mapping, uD, bases):
+    tree_map = assemble_rooted_tree(z, -1, E)
+    ordering = get_ordering(z, tree_map)
+    L = np.zeros((size, z + 1, 5))
+    likelihood(sequences, size, ordering, tree_map, mapping, uD, L, bases)
+    lh = 0
+    for i in range(size):
+        li = 0
+        for b in range(5):
+            li += 0.2 * L[i][z][b]
+        lh += np.log(li)
+    return lh
