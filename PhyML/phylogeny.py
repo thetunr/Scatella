@@ -71,9 +71,14 @@ def make_tree(sequences, bases, size):
         for i in subtrees:
             likelihood(sequences, size, subtrees[i], treemaps[i], mapping, uD, L, bases)
         
+        #only edges with no swaps going here: tuples of edge and opt_result
+        noswaps = []
+        #only edges with swaps going here: tuples of edge, score, swap, opt_result
+        swaps = []
+
         #internal edge
-        U = np.zeros((size, 5))
-        V = np.zeros((size, 5))
+        U = np.zeros((3, size, 5))
+        V = np.zeros((3, size, 5))
         if 0 and 2 in subtrees:
             w = 0
             x = 0
@@ -87,20 +92,66 @@ def make_tree(sequences, bases, size):
 
                         y += L[i][v[0]][k] * jcm(bases[k], bases[j], uD[r][v[0]])
                         z += L[i][v[1]][k] * jcm(bases[k], bases[j], uD[r][v[1]])     
+                    
+                    #(a)
+                    U[0][i][j] = w * x
+                    V[0][i][j] = y * z
+                    #(b)
+                    U[1][i][j] = w * y
+                    V[1][i][j] = x * z
+                    #(c)
+                    U[2][i][j] = w * z
+                    V[2][i][j] = y * x
 
-                    U[i][j] = w * x
-                    V[i][j] = y * z
-            
-            def total_likelihood(t):
+            def total_likelihooda(t):
                 log_likelihood = 0
                 for i in range(size):
                     prob = 0
                     for j in range(5):
                         for k in range(5):
-                            prob += 0.2 * U[i][j] * V[i][k] * jcm(bases[j], bases[k], t)
+                            prob += 0.2 * U[0][i][j] * V[0][i][k] * jcm(bases[j], bases[k], t)
                     log_likelihood += np.log(prob)
                 return log_likelihood
-            opt_result = minimize_scalar(lambda x: -total_likelihood(x), bounds=(0,2*uD[r][l]))
+            opt_resulta = minimize_scalar(lambda x: -total_likelihooda(x), bounds=(0,2*uD[r][l]))
+
+            #change this to make it better in the future maybe
+            def total_likelihoodb(t):
+                log_likelihood = 0
+                for i in range(size):
+                    prob = 0
+                    for j in range(5):
+                        for k in range(5):
+                            prob += 0.2 * U[1][i][j] * V[1][i][k] * jcm(bases[j], bases[k], t)
+                    log_likelihood += np.log(prob)
+                return log_likelihood
+            opt_resultb = minimize_scalar(lambda x: -total_likelihoodb(x), bounds=(0,2*uD[r][l]))
+
+            def total_likelihoodc(t):
+                log_likelihood = 0
+                for i in range(size):
+                    prob = 0
+                    for j in range(5):
+                        for k in range(5):
+                            prob += 0.2 * U[2][i][j] * V[2][i][k] * jcm(bases[j], bases[k], t)
+                    log_likelihood += np.log(prob)
+                return log_likelihood
+            opt_resultc = minimize_scalar(lambda x: -total_likelihoodc(x), bounds=(0,2*uD[r][l]))
+            
+            #maximized likelihoods per swap
+            opta = -opt_resulta.fun
+            optb = -opt_resultb.fun
+            optc = -opt_resultc.fun
+            # score = something - opt_result.fun 
+            if max(opta, optb, optc) == opta:
+                noswaps.append(((l, r), opta))
+            elif max(opta, optb, optc) == optb:
+                score = optb - opta
+                swaps.append(((l, r), score, 1, optb))
+            else:
+                score = optc - opta
+                swaps.append(((l, r), score, 2, optc))
+
+        
         #external node V
         elif 0 in subtrees:
             w = 0
@@ -112,7 +163,7 @@ def make_tree(sequences, bases, size):
                         w += L[i][u[0]][k] * jcm(bases[k], bases[j], uD[l][u[0]])
                         x += L[i][u[1]][k] * jcm(bases[k], bases[j], uD[l][u[1]])
   
-                    U[i][j] = w * x
+                    U[0][i][j] = w * x
 
             def total_likelihood(t):
                 log_likelihood = 0  
@@ -123,10 +174,13 @@ def make_tree(sequences, bases, size):
                             h = 0
                             if sequences[mapping[r]][i] == bases[k]:
                                 h = 1
-                            prob += 0.2 * U[i][j] * h * jcm(bases[j], bases[k], t)
+                            prob += 0.2 * U[0][i][j] * h * jcm(bases[j], bases[k], t)
                     log_likelihood += np.log(prob)
                 return log_likelihood
             opt_result = minimize_scalar(lambda x: -total_likelihood(x), bounds=(0,2*uD[r][l]))
+            noswaps.append(((l, r), opt_result)) 
+
+        
         #external node U
         else:
             y = 0
@@ -137,7 +191,7 @@ def make_tree(sequences, bases, size):
                         #(a)
                         y += L[i][v[0]][k] * jcm(bases[k], bases[j], uD[r][v[0]])
                         z += L[i][v[1]][k] * jcm(bases[k], bases[j], uD[r][v[1]])     
-                    V[i][j] = y * z
+                    V[0][i][j] = y * z
             def total_likelihood(t):
                 log_likelihood = 0   
                 for i in range(size):
@@ -147,11 +201,11 @@ def make_tree(sequences, bases, size):
                             h = 0
                             if sequences[mapping[l]][i] == bases[j]:
                                 h = 1
-                            prob += 0.2 * h * V[i][k] * jcm(bases[j], bases[k], t)
+                            prob += 0.2 * h * V[0][i][k] * jcm(bases[j], bases[k], t)
                     log_likelihood += np.log(prob)
                 return log_likelihood
             opt_result = minimize_scalar(lambda x: -total_likelihood(x), bounds=(0,2*uD[r][l]))
-        break
+            noswaps.append(((l, r), opt_result)) 
     return
 
 
