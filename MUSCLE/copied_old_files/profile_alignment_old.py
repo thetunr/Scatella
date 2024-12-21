@@ -19,6 +19,7 @@ def log_expectation_score(x_probs, y_probs, epsilon=1e-10):
         score += x * math.log((x + epsilon) / (y + epsilon))
     return score
 
+
 ''' Computes the actual string alignments given the traceback matrix.
 Arguments:
     x: the first profile we're aligning
@@ -31,32 +32,30 @@ Returns:
     y_gaps: indices in y where gaps were inserted
 '''
 def profile_traceback(x, y, t):
-    profile_length = max(len(x), len(y))
-    p_x = [[] for _ in range(profile_length)]
-    p_y = [[] for _ in range(profile_length)]
+    p_x = []
+    p_y = []
     x_gaps = []
     y_gaps = []
     i = len(x)
     j = len(y)
-    k = profile_length - 1
     gap_probs = [0.0 for _ in range(len(x[0]) - 1)] + [1.0]
     while (i > 0 or j > 0):
-        match t[i, j]:
-            case 0: # diagonal move
-                p_x[k] = x[i - 1]
-                p_y[k] = y[j - 1]
-                i -= 1; j -= 1
-            case 1: # down move
-                p_x[k] = x[i - 1]
-                p_y[k] = gap_probs
-                i -= 1
-                y_gaps.append(i)
-            case -1: # right move
-                p_x[k] = gap_probs
-                p_y[k] = y[j - 1]
-                j -= 1
-                x_gaps.append(j)
-        k -= 1
+        if t[i, j] == 0: # diagonal move
+            p_x.append(x[i - 1])
+            p_y.append(y[j - 1])
+            i -= 1; j -= 1
+        elif t[i, j] == 1:   
+            p_x.append(x[i - 1])
+            p_y.append(gap_probs)
+            i -= 1
+            y_gaps.append(i)
+        else: # right move
+            p_x.append(gap_probs)
+            p_y.append(y[j - 1])
+            j -= 1
+            x_gaps.append(j)
+    p_x.reverse()
+    p_y.reverse()
     return p_x, p_y, x_gaps, y_gaps
 
 
@@ -87,12 +86,8 @@ Returns:
     profile: the aligned profile
 '''
 def profile_alignment(x, y, x_count, y_count, d):
-    # n = len(x[0])
-    # m = len(y[0])
-
     n = len(x)
     m = len(y)
-
     ''' Recurrence matrix '''
     F = np.zeros([n + 1, m + 1])
     ''' Traceback matrix '''
@@ -102,7 +97,6 @@ def profile_alignment(x, y, x_count, y_count, d):
     for i in range(1, n + 1):
         F[i, 0] = F[i - 1, 0] - d
         t[i, 0] = 1 # representing down move as 1
-
     for j in range(1, m + 1):
         F[0, j] = F[0, j - 1] - d
         t[0, j] = -1 # representing right move as -1
@@ -110,21 +104,19 @@ def profile_alignment(x, y, x_count, y_count, d):
     # filling in F matrix
     for i in range(1, n + 1):
         for j in range(1, m + 1):
-            # print('profile alignment: i - ', i, ", j - ", j)
-            if i % 100 == 0 and j == 1:
-                print('profile alignment: i - ', i)
-            
-            # x_probs = [row[i - 1] for row in x]
-            # y_probs = [row[j - 1] for row in y]
 
-            x_probs = x[i - 1]
-            y_probs = y[j - 1]
+            if i % 100 == 0 and j == 1:
+                print("    profile alignment: i -", i)
 
             score = log_expectation_score(x[i - 1], y[j - 1])
             # total_count = x_count + y_count
-            # weighted_x_probs = [p * x_count / total_count for p in x_probs]
-            # weighted_y_probs = [p * y_count / total_count for p in y_probs]
-            # score = log_expectation_score(weighted_x_probs, weighted_y_probs)
+            # weighted_x_probs = [p * x_count for p in x[i - 1]]
+            # total_sum_x = sum(weighted_x_probs)
+            # normalized_x_probs = [p / total_sum_x for p in weighted_x_probs] if total_sum_x != 0 else [0 for _ in weighted_x_probs]
+            # weighted_y_probs = [p * y_count for p in y[j - 1]]
+            # total_sum_y = sum(weighted_y_probs)
+            # normalized_y_probs = [p / total_sum_y for p in weighted_x_probs] if total_sum_y != 0 else [0 for _ in weighted_y_probs]
+            # score = log_expectation_score(normalized_x_probs, normalized_y_probs)
 
             first_case = F[i - 1, j - 1] - score # diagonal
             second_case = F[i - 1, j] - d # down move

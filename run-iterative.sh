@@ -7,5 +7,5 @@
 # echo -e "----------------------------------------------\n"
 
 # ALIGNMENT 1
-python3 MUSCLE/iterative_alignment.py -f data/sequences.fasta -s 0 -d 60 -e 0 -o MUSCLE/output/aligned
+python3 MUSCLE/iterative_alignment.py -f data/sequences.fasta -s 0 -d 430 -e 0 -o MUSCLE/output/aligned
 echo -e "----------------------------------------------\n"

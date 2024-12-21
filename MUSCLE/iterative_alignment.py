@@ -1,4 +1,3 @@
-import numpy as np
 import copy
 import argparse
 import json
@@ -202,9 +201,6 @@ def muscle_step1(sequences, gap_penalty):
     start_time = time.time()
     # 1.1 k-mer counting
     kmer_matrix = matrix_to_dict(get_distance_matrix(sequences, "kmers", 5))
-
-    print_dict_matrix(kmer_matrix)
-
     # 1.2 UPGMA
     E, uD, root = upgma(kmer_matrix)
     tree1 = assemble_tree(root, E)
@@ -230,9 +226,6 @@ def muscle_step2(sequences, gap_penalty, msa1_seqs):
     start_time = time.time()
     # 2.1 kimura distance
     kimura_matrix = matrix_to_dict(get_distance_matrix(msa1_seqs, "kimura"))
-
-    print_dict_matrix(kimura_matrix)
-
     # 2.2 UPGMA
     E, uD, root = upgma(kimura_matrix)
     tree2 = assemble_tree(root, E)
@@ -244,10 +237,10 @@ def muscle_step2(sequences, gap_penalty, msa1_seqs):
     end_time = time.time()
     elapsed_time = end_time - start_time
     print(f"MUSCLE Step 2 completed in {elapsed_time:.2f} seconds.\n---------------------")
-    return msa2_seqs, msa2, post_ordering_tree2
+    return msa2_seqs, msa2, tree2, post_ordering_tree2
 
 ''' MUSCLE Step 3. '''
-def muscle_step3(sequences, gap_penalty, msa2_seqs, msa2, post_ordering_tree2):
+def muscle_step3(sequences, gap_penalty, msa2_seqs, msa2, tree2, post_ordering_tree2):
     print("MUSCLE Step 3 begin.")
     start_time = time.time()
     best_msa_seqs = msa2_seqs
@@ -310,14 +303,16 @@ Arguments:
 Return:
     msa_seqs: list of aligned sequences
 '''
-def muscle(sequences, gap_penalty):
+def muscle(sequences, gap_penalty, descriptions, output):
     # MUSCLE Step 1: Draft Progressive
     msa1_seqs = muscle_step1(sequences, gap_penalty)
+    write_fasta(msa1_seqs, descriptions, output + "-step1.fasta")
     # MUSCLE Step 2: Improved progressive (CAN BE ITERATED)
-    msa2_seqs, msa2, post_ordering_tree2 = muscle_step2(sequences, gap_penalty, msa1_seqs)
+    msa2_seqs, msa2, tree2, post_ordering_tree2 = muscle_step2(sequences, gap_penalty, msa1_seqs)
+    write_fasta(msa2_seqs, descriptions, output + "-step2.fasta")
     # MUSCLE Step 3: Refinement
-    best_msa_seqs = muscle_step3(sequences, gap_penalty, msa2_seqs, msa2, post_ordering_tree2)
-    return msa1_seqs, msa2_seqs, best_msa_seqs
+    best_msa_seqs = muscle_step3(sequences, gap_penalty, msa2_seqs, msa2, tree2, post_ordering_tree2)
+    return best_msa_seqs
 
 
 '''
@@ -390,9 +385,7 @@ def main():
     # descriptions = descriptions[10:20]
 
     print("Aligning ", len(sequences), " sequences.")
-    msa1_seqs, msa2_seqs, best_msa_seqs = muscle(sequences, gap_penalty)
-    write_fasta(msa1_seqs, descriptions, output + "-step1.fasta")
-    write_fasta(msa2_seqs, descriptions, output + "-step2.fasta")
+    best_msa_seqs = muscle(sequences, gap_penalty, descriptions, output)
     write_fasta(best_msa_seqs, descriptions, output + "-step3.fasta")
 
 
