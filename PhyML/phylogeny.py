@@ -49,7 +49,7 @@ Arguments:
 Returns:
     ordering: the post-order representation of the tree
 '''
-def make_tree(sequences, size):
+def make_tree(sequences, bases, size):
     dist_m, mapping = sh.get_distances(sequences)
     og = 0
     E, uD = th.neighbor_join(dist_m)
@@ -66,22 +66,89 @@ def make_tree(sequences, size):
             treemaps[2 + i] = th.assemble_rooted_tree(v[i], r, E)
             subtrees[2 + i] = th.get_ordering(v[i], treemaps[2 + i])
         
-        likelihoods = {}
-        print(subtrees)
+        L = np.zeros((size, 40, 5))
+
         for i in subtrees:
-            likelihoods[i] = likelihood(sequences, size, subtrees[i], treemaps[i], mapping, uD)
-            pass
+            likelihood(sequences, size, subtrees[i], treemaps[i], mapping, uD, L)
         #internal edge
-        if 0 and 2 in likelihoods:
-            pass
+        U = np.zeros((size, 5))
+        V = np.zeros((size, 5))
+        if 0 and 2 in subtrees:
+            w = 0
+            x = 0
+            y = 0
+            z = 0
+            for i in range(size):
+                for j in range(5):
+                    for k in range(5):
+                        #(a)
+                        w += L[i][u[0]][k] * jcm(bases[k], bases[j], uD[l][u[0]])
+                        x += L[i][u[1]][k] * jcm(bases[k], bases[j], uD[l][u[1]])
+
+                        y += L[i][v[0]][k] * jcm(bases[k], bases[j], uD[r][v[0]])
+                        z += L[i][v[1]][k] * jcm(bases[k], bases[j], uD[r][v[1]])     
+
+                    U[i][j] = w * x
+                    V[i][j] = y * z
+            log_likelihood = 0            
+            for i in range(size):
+                prob = 0
+                for j in range(5):
+                    for k in range(5):
+                        prob += 0.2 * U[i][j] * V[i][k] * jcm(bases[j], bases[k], uD[l][r])
+                log_likelihood += np.log(prob)
+
+
         #external node V
-        elif 0 in likelihoods:
-            pass
+        elif 0 in subtrees:
+            w = 0
+            x = 0
+
+
+            for i in range(size):
+                for j in range(5):
+                    for k in range(5):
+                        #(a)
+                        w += L[i][u[0]][k] * jcm(bases[k], bases[j], uD[l][u[0]])
+                        x += L[i][u[1]][k] * jcm(bases[k], bases[j], uD[l][u[1]])
+  
+                    U[i][j] = w * x
+
+            log_likelihood = 0            
+            for i in range(size):
+                prob = 0
+                for j in range(5):
+                    for k in range(5):
+                        h = 0
+                        if sequences[mapping[r]][i] == bases[k]:
+                            h = 1
+                        prob += 0.2 * U[i][j] * h * jcm(bases[j], bases[k], uD[l][r])
+                log_likelihood += np.log(prob)
+            print(log_likelihood)
         #external node U
         else:
-            pass
-
-        print(likelihoods)
+            y = 0
+            z = 0
+            for i in range(size):
+                for j in range(5):
+                    for k in range(5):
+                        #(a)
+                        y += L[i][v[0]][k] * jcm(bases[k], bases[j], uD[r][v[0]])
+                        z += L[i][v[1]][k] * jcm(bases[k], bases[j], uD[r][v[1]])     
+                    V[i][j] = y * z
+            log_likelihood = 0            
+            for i in range(size):
+                prob = 0
+                for j in range(5):
+                    for k in range(5):
+                        h = 0
+                        if sequences[mapping[l]][i] == bases[j]:
+                            h = 1
+                        
+                        prob += 0.2 * h * V[i][k] * jcm(bases[j], bases[k], uD[l][r])
+                log_likelihood += np.log(prob)
+                
+            print(log_likelihood)
         break
     return
 
@@ -98,11 +165,9 @@ Arguments:
 Returns:
     total_log_prob: log likelihood of the topology given the sequence data
 '''
-def likelihood(data, seqlen, ordering, treemap, mapping, ud):
-    total_log_prob = 0.0
+def likelihood(data, seqlen, ordering, treemap, mapping, ud, l):
     bases = 'ACGT-'
     base_map = {b: i for i, b in enumerate(bases)}
-    l = np.zeros((seqlen, 40, 5)) #might change later
 
     for index in range(seqlen):
         for node_idx in ordering:
@@ -127,28 +192,18 @@ def likelihood(data, seqlen, ordering, treemap, mapping, ud):
                         right_prob += jcm(bases[i], bases[j], ud[i][j]) * l[index][treemap[node_idx][1]][j]
                     #combine for prob at node
                     l[index][node_idx][i] = left_prob * right_prob
-                    
-        root = ordering[-1]  
-
-        def t_helper(t):
-            prob = 0.0
-            for i in range(5):
-                prob += l[index][root][i] * 0.20 * jcm(data[mapping][root][index], bases[i], t) 
-
-
-        total_log_prob += np.log(prob)
-    return total_log_prob
         
 
 
 def main():
     parser = argparse.ArgumentParser(
         description='Maximum Likelihood phylogeny on a set of sequences')
-    parser.add_argument('-f', action="store", dest="f", type=str, default='MUSCLE\output\example.fasta')
+    parser.add_argument('-f', action="store", dest="f", type=str, default='MUSCLE/output/example.fasta')
     args = parser.parse_args()
     seq_file = args.f
     sequences, size = sh.read_data(seq_file)
-    make_tree(sequences, size)
+    bases = 'ACGT-'
+    make_tree(sequences, bases, size)
     return
 
 
