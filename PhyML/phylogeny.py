@@ -35,14 +35,12 @@ Returns:
 def make_tree(sequences, bases, size, og):
     dist_m, mapping = sh.get_distances(sequences)
     E, uD, fake_root = th.neighbor_join(dist_m)
-    lamb = 1
     #only edges with no swaps going here: tuples of edge and opt_result
     noswaps = []
     #only edges with swaps going here: tuples of edge, score, swap, opt_result
     swaps = []
     # root the tree to calculate total likelihood
     th.root_tree(E, og, fake_root, uD)
-
     curr_likelihood = th.total_likelihood(fake_root, E, size, sequences, mapping, uD, bases)
     print(curr_likelihood)
     # unroot the tree to modify branch lengths and perform NNIs
@@ -195,60 +193,61 @@ def make_tree(sequences, bases, size, og):
             noswaps.append(((l, r), opt_result.x))
 
     # apply swaps and update branch lengths
-    swaps = sorted(swaps, key=lambda tup: tup[1], reverse=True)
-    seen = []
-    swap_count = int(lamb * len(swaps))
-    for e, score, swap, length in swaps:
-        if swap_count == 0:
-            break
-        l, r = e
-        swap1, swap2 = swap
-        if l not in seen and r not in seen:
-            print(l, r)
-            seen.append(l)
-            seen.append(r)
-            seen.append(swap1)
-            seen.append(swap2)
-            if (l, swap1) in E:
-                E.remove((l, swap1))
-                E.append((l, swap2))
-            elif (swap1, l) in E:
-                E.remove((swap1, l))
-                E.append((swap2, l))
-            if (r, swap2) in E:
-                E.remove((r, swap2))
-                E.append((r, swap1))
-            elif (swap2, r) in E:
-                E.remove((swap2, r))
-                E.append((swap1, r))
-        uD[l][r] = uD[l][r] + lamb * (length - uD[l][r])
-        uD[r][l] = uD[r][l] + lamb * (length - uD[r][l])
-        swap_count -= 1
-    for e, length in noswaps:
-        l, r = e
-        uD[l][r] = uD[l][r] + lamb * (length - uD[l][r])
-        uD[r][l] = uD[r][l] + lamb * (length - uD[r][l])
+    new_likelihood = -np.inf
+    lamb = 1
+    while (new_likelihood < curr_likelihood):
+        print(curr_likelihood, new_likelihood)
+        swaps = sorted(swaps, key=lambda tup: tup[1], reverse=True)
+        seen = []
+        swap_count = int(lamb * len(swaps))
+        for e, score, swap, length in swaps:
+            if swap_count == 0:
+                break
+            l, r = e
+            swap1, swap2 = swap
+            if l not in seen and r not in seen:
+                seen.append(l)
+                seen.append(r)
+                seen.append(swap1)
+                seen.append(swap2)
+                if (l, swap1) in E:
+                    E.remove((l, swap1))
+                    E.append((l, swap2))
+                elif (swap1, l) in E:
+                    E.remove((swap1, l))
+                    E.append((swap2, l))
+                if (r, swap2) in E:
+                    E.remove((r, swap2))
+                    E.append((r, swap1))
+                elif (swap2, r) in E:
+                    E.remove((swap2, r))
+                    E.append((swap1, r))
+            uD[l][r] = uD[l][r] + lamb * (length - uD[l][r])
+            uD[r][l] = uD[r][l] + lamb * (length - uD[r][l])
+            swap_count -= 1
+        for e, length in noswaps:
+            l, r = e
+            uD[l][r] = uD[l][r] + lamb * (length - uD[l][r])
+            uD[r][l] = uD[r][l] + lamb * (length - uD[r][l])
+        th.root_tree(E, og, fake_root, uD)
+        new_likelihood = th.total_likelihood(fake_root, E, size, sequences, mapping, uD, bases)
+        th.unroot_tree(E, fake_root)
+        lamb /= 2
     th.root_tree(E, og, fake_root, uD)
-    new_likelihood = th.total_likelihood(fake_root, E, size, sequences, mapping, uD, bases)
-    # for i in range(size):
-    #     for j in range(39):
-    #         for k in range(5):
-    #             if new_likelihood[i][j][k] != curr_likelihood[i][j][k]:
-    #                 print(new_likelihood[i][j][k], curr_likelihood[i][j][k])
-    print(curr_likelihood, new_likelihood)
-    return
+    tree_map = th.assemble_rooted_tree(fake_root, -1, E)
+    return th.generate_newick(fake_root, tree_map, uD, mapping)
 
 
 def main():
     parser = argparse.ArgumentParser(
         description='Maximum Likelihood phylogeny on a set of sequences')
-    parser.add_argument('-f', action="store", dest="f", type=str, default='MUSCLE/output/aligned_1000.fasta')
+    parser.add_argument('-f', action="store", dest="f", type=str, default='MUSCLE/output/aligned-step1-keep.fasta')
     args = parser.parse_args()
     seq_file = args.f
     sequences, size = sh.read_data(seq_file)
     bases = 'ACGT-'
     og = 0
-    make_tree(sequences, bases, size, og)
+    print(make_tree(sequences, bases, size, og))
     return
 
 
