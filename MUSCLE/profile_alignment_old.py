@@ -31,31 +31,32 @@ Returns:
     y_gaps: indices in y where gaps were inserted
 '''
 def profile_traceback(x, y, t):
-    p_x = []
-    p_y = []
+    profile_length = max(len(x), len(y))
+    p_x = [[] for _ in range(profile_length)]
+    p_y = [[] for _ in range(profile_length)]
     x_gaps = []
     y_gaps = []
     i = len(x)
     j = len(y)
+    k = profile_length - 1
     gap_probs = [0.0 for _ in range(len(x[0]) - 1)] + [1.0]
     while (i > 0 or j > 0):
         match t[i, j]:
             case 0: # diagonal move
-                p_x.append(x[i - 1])
-                p_y.append(y[j - 1])
+                p_x[k] = x[i - 1]
+                p_y[k] = y[j - 1]
                 i -= 1; j -= 1
             case 1: # down move
-                p_x.append(x[i - 1])
-                p_y.append(gap_probs)
+                p_x[k] = x[i - 1]
+                p_y[k] = gap_probs
                 i -= 1
                 y_gaps.append(i)
             case -1: # right move
-                p_x.append(gap_probs)
-                p_y.append(y[j - 1])
+                p_x[k] = gap_probs
+                p_y[k] = y[j - 1]
                 j -= 1
                 x_gaps.append(j)
-    p_x.reverse()
-    p_y.reverse()
+        k -= 1
     return p_x, p_y, x_gaps, y_gaps
 
 

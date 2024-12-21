@@ -1,3 +1,4 @@
+import copy
 ''' Prints a dictionary-based 2D matrix as a properly formatted table, 
     with rows and columns aligned by their sorted keys.
 '''
@@ -20,18 +21,20 @@ def print_profiles(msa):
 ''' Mapping from integer to nucleotide that it represents in profile. '''
 nucleotide_list = ['A', 'T', 'G', 'C', '-']
 
+def transpose(l1, l2):
+    l2 =[[row[i] for row in l1] for i in range(len(l1[0]))]
+    return l2
+
 ''' Prints profile. '''
 def print_profile_matrix(profile):
-    for i, row in enumerate(profile):
+    mt = []
+    mt = transpose(profile, mt)
+    for i, row in enumerate(mt):
         print(nucleotide_list[i], ": ", row)
-
 
 ''' Prints best sequence given a profile. '''
 def print_profile_sequence(profile):
     best_sequence = []
-    for i in range(len(profile[0])): 
-        column = [profile[j][i] for j in range(len(profile))]
-        best_index = column.index(max(column))
-        best_nucleotide = nucleotide_list[best_index]
-        best_sequence.append(best_nucleotide)
+    for row in profile:
+        best_sequence.append(nucleotide_list[row.index(max(row))])
     print("".join(best_sequence))
