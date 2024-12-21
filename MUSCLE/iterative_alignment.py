@@ -371,7 +371,6 @@ def main():
     # sequences = ["ACTG", "ACTG", "ACTG", "GGGACTG", "ACTGCCC"]
     
     msa_seqs = muscle(sequences, gap_penalty)
-    return
     write_fasta(msa_seqs, descriptions, output)
     seq_lengths = []
     for seq in msa_seqs:
