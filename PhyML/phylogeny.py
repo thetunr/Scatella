@@ -49,11 +49,16 @@ Arguments:
 Returns:
     ordering: the post-order representation of the tree
 '''
-def make_tree(sequences, bases, size):
+def make_tree(sequences, bases, size, og):
     dist_m, mapping = sh.get_distances(sequences)
-    og = 0
     E, uD = th.neighbor_join(dist_m)
+    lamb = 1
+    #only edges with no swaps going here: tuples of edge and opt_result
+    noswaps = []
+    #only edges with swaps going here: tuples of edge, score, swap, opt_result
+    swaps = []
     for l, r in E:
+        # create subtrees
         u, v = th.find_children(l, r, E)
         subtrees = {}
         treemaps = {}
@@ -68,18 +73,14 @@ def make_tree(sequences, bases, size):
         
         L = np.zeros((size, 40, 5))
 
+        # find likelihoods of subtrees
         for i in subtrees:
             likelihood(sequences, size, subtrees[i], treemaps[i], mapping, uD, L, bases)
-        
-        #only edges with no swaps going here: tuples of edge and opt_result
-        noswaps = []
-        #only edges with swaps going here: tuples of edge, score, swap, opt_result
-        swaps = []
-
-        #internal edge
+        # determine optimal branch lengths and swaps
         U = np.zeros((3, size, 5))
         V = np.zeros((3, size, 5))
-        if 0 and 2 in subtrees:
+        # internal branch
+        if 0 in subtrees and 2 in subtrees:
             w = 0
             x = 0
             y = 0
@@ -91,8 +92,8 @@ def make_tree(sequences, bases, size):
                         x += L[i][u[1]][k] * jcm(bases[k], bases[j], uD[l][u[1]])
 
                         y += L[i][v[0]][k] * jcm(bases[k], bases[j], uD[r][v[0]])
-                        z += L[i][v[1]][k] * jcm(bases[k], bases[j], uD[r][v[1]])     
-                    
+                        z += L[i][v[1]][k] * jcm(bases[k], bases[j], uD[r][v[1]])
+
                     #(a)
                     U[0][i][j] = w * x
                     V[0][i][j] = y * z
@@ -141,18 +142,15 @@ def make_tree(sequences, bases, size):
             opta = -opt_resulta.fun
             optb = -opt_resultb.fun
             optc = -opt_resultc.fun
-            # score = something - opt_result.fun 
             if max(opta, optb, optc) == opta:
-                noswaps.append(((l, r), opta))
+                noswaps.append(((l, r), opt_resulta.x))
             elif max(opta, optb, optc) == optb:
                 score = optb - opta
-                swaps.append(((l, r), score, 1, optb))
+                swaps.append(((l, r), score, (u[1], v[0]), opt_resultb.x))
             else:
                 score = optc - opta
-                swaps.append(((l, r), score, 2, optc))
-
-        
-        #external node V
+                swaps.append(((l, r), score, (u[1], v[1]), opt_resultc.x))        
+        # external node V
         elif 0 in subtrees:
             w = 0
             x = 0
@@ -178,9 +176,7 @@ def make_tree(sequences, bases, size):
                     log_likelihood += np.log(prob)
                 return log_likelihood
             opt_result = minimize_scalar(lambda x: -total_likelihood(x), bounds=(0,2*uD[r][l]))
-            noswaps.append(((l, r), opt_result)) 
-
-        
+            noswaps.append(((l, r), opt_result.x)) 
         #external node U
         else:
             y = 0
@@ -205,7 +201,36 @@ def make_tree(sequences, bases, size):
                     log_likelihood += np.log(prob)
                 return log_likelihood
             opt_result = minimize_scalar(lambda x: -total_likelihood(x), bounds=(0,2*uD[r][l]))
-            noswaps.append(((l, r), opt_result)) 
+            noswaps.append(((l, r), opt_result.x))
+        
+    # apply swaps and update branch lengths
+    swaps = sorted(swaps, key=lambda tup: tup[1], reverse=True)
+    seen = []
+    for e, score, swap, length in swaps:
+        l, r = e
+        swap1, swap2 = swap
+        if l not in seen and r not in seen:
+            seen.append(l)
+            seen.append(r)
+            if (l, swap1) in E:
+                E.remove((l, swap1))
+                E.append((l, swap2))
+            elif (swap1, l) in E:
+                E.remove((swap1, l))
+                E.append((swap2, l))
+            if (r, swap2) in E:
+                E.remove((r, swap2))
+                E.append((r, swap1))
+            elif (swap2, r) in E:
+                E.remove((swap2, r))
+                E.append((swap1, r))
+        uD[l][r] = uD[l][r] + lamb * (length - uD[l][r])
+        uD[r][l] = uD[r][l] + lamb * (length - uD[r][l]) 
+    
+    for e, length in noswaps:
+        l, r = e
+        uD[l][r] = uD[l][r] + lamb * (length - uD[l][r])
+        uD[r][l] = uD[r][l] + lamb * (length - uD[r][l])
     return
 
 
@@ -259,7 +284,8 @@ def main():
     seq_file = args.f
     sequences, size = sh.read_data(seq_file)
     bases = 'ACGT-'
-    make_tree(sequences, bases, size)
+    og = 0
+    make_tree(sequences, bases, size, og)
     return
 
 
