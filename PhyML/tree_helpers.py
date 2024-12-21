@@ -90,8 +90,8 @@ Helper function to find the roots of the W, X, Y, and Z subtrees of a given edge
 topology `E`.
 
 Arguments:
-    l: the left endpoint of `e`
-    r: the right endpoint of `e`
+    left: the left endpoint of `e`
+    right: the right endpoint of `e`
     E: the topology of the tree in question
 Returns:
     U: the roots of subtrees W and X
@@ -121,8 +121,10 @@ First finds the root node and find its children, and then generates
 the whole binary tree based on.
 
 Arguments:
-    E：A list storing the edges of an unrooted tree in the form of tuples: (index, index). 
     fake_root: which node index represent the root
+    ignore: the node index to ignore in the case where you want to find a subtree
+    in an unrooted tree
+    E：A list storing the edges of an unrooted tree in the form of tuples: (index, index). 
 
 Returns:
     tree_map：A dictionary storing the topology of the tree, where each key is a node index and each value is a list of

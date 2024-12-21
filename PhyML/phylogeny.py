@@ -2,7 +2,6 @@
 TODOS:
 MAXIMUM LIKELIHOOD BRANCH OPTIMIZATION - PhyML
     -- iterate over all E for loop --
-    4. compute conditional likelihoods for each U and V possible (3 in total)
     5. determine if La, Lb, or Lc is better and compute score if swapping
     -- end loop --
     -- while loop till convergence --
@@ -38,13 +37,14 @@ def jcm(b, a, t, u = 1.0):
         return 0.2 * (1 + (4 * np.exp(-5 * u * t)))
     return 0.2 * (1 - np.exp(-5 * u * t))
 
-#check num of keys in subtrees to see if external or internal
 ''' 
-Given a distance matrix of sequences, generate a phylogeny using
-neighbor-joining and output the post-order representation of the tree.
+Given sequence data, generate a phylogeny using similar methods to
+PhyML
 
 Arguments:
-    dist_m: the distance matrix
+    sequences: a dictionary of taxon to genetic sequence
+    bases: a string of the possible bases in a sequence
+    size: the length of each sequence
 
 Returns:
     ordering: the post-order representation of the tree
@@ -69,7 +69,8 @@ def make_tree(sequences, bases, size):
         L = np.zeros((size, 40, 5))
 
         for i in subtrees:
-            likelihood(sequences, size, subtrees[i], treemaps[i], mapping, uD, L)
+            likelihood(sequences, size, subtrees[i], treemaps[i], mapping, uD, L, bases)
+        
         #internal edge
         U = np.zeros((size, 5))
         V = np.zeros((size, 5))
@@ -81,7 +82,6 @@ def make_tree(sequences, bases, size):
             for i in range(size):
                 for j in range(5):
                     for k in range(5):
-                        #(a)
                         w += L[i][u[0]][k] * jcm(bases[k], bases[j], uD[l][u[0]])
                         x += L[i][u[1]][k] * jcm(bases[k], bases[j], uD[l][u[1]])
 
@@ -155,32 +155,32 @@ def make_tree(sequences, bases, size):
     return
 
 
-#IMPORTED FROM A3, add sup fpr gaps
-''' Computes the likelihood of the data given the topology specified by ordering
+''' 
+Computes the likelihood of the data given the topology specified by `ordering`
+by editing `L`
 
 Arguments:
     data: sequence data (dict: name of sequence owner -> sequence)
     seqlen: length of sequences
     ordering: postorder traversal of our topology
-    bp: branch probabilities for the given branches: 6x4x4 matrix indexed as
-        branch_probs[branch_id][a][b] = P(b | a, t_branch_id)
-Returns:
-    total_log_prob: log likelihood of the topology given the sequence data
+    treemap: the topology of the tree in the form of a dictionary
+    mapping: the mapping of node indices to the actual sequence names
+    ud: the dictionary storing the lengths of the branches
+    L: the matrix of subtree likelihoods where L[i][j][k] is the probability of
+    sequence j at index i having base k
+    bases: a string of the possible bases in a sequence
 '''
-def likelihood(data, seqlen, ordering, treemap, mapping, ud, l):
-    bases = 'ACGT-'
-    base_map = {b: i for i, b in enumerate(bases)}
-
+def likelihood(data, seqlen, ordering, treemap, mapping, ud, L, bases):
     for index in range(seqlen):
         for node_idx in ordering:
             # leaf case
             if (treemap[node_idx] == []): 
                 base = data[mapping[node_idx]][index]
                 for i in range(5):
-                    if base_map[base] == i:
-                        l[index][node_idx][i] = 1.0 
+                    if base == bases[i]:
+                        L[index][node_idx][i] = 1.0 
                     else:
-                        l[index][node_idx][i] = 0.0
+                        L[index][node_idx][i] = 0.0
             # node with 2 children
             else:
                 for i in range(5): 
@@ -189,11 +189,11 @@ def likelihood(data, seqlen, ordering, treemap, mapping, ud, l):
                     right_prob = 0.0
                     for j in range(5):
                         #find left prob
-                        left_prob += jcm(bases[i], bases[j], ud[i][j]) * l[index][treemap[node_idx][0]][j]
+                        left_prob += jcm(bases[i], bases[j], ud[i][j]) * L[index][treemap[node_idx][0]][j]
                         #find right prob
-                        right_prob += jcm(bases[i], bases[j], ud[i][j]) * l[index][treemap[node_idx][1]][j]
+                        right_prob += jcm(bases[i], bases[j], ud[i][j]) * L[index][treemap[node_idx][1]][j]
                     #combine for prob at node
-                    l[index][node_idx][i] = left_prob * right_prob
+                    L[index][node_idx][i] = left_prob * right_prob
         
 
 
