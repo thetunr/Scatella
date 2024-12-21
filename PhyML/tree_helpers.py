@@ -177,7 +177,7 @@ def get_ordering(fake_root, tree_map):
         if len(lefts) > len(rights):
             return lefts + rights
         return rights + lefts
-    ordering = post_order(fake_root)
+    ordering = post_order(fake_root) + [fake_root]
     return ordering
 
 
