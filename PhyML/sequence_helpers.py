@@ -20,13 +20,13 @@ def read_data(filename):
         for l in lines:
             if l[0] == ">": 
                 if (len(output) != 0):
-                    sequences[curr] = output.replace("N", "-")
+                    sequences[curr] = output.replace("N", "-").replace("W", "-").replace("Y", "-")
                     size = len(output)
                     output = ""
                 curr = l[1:].strip()
             else:
                 output += l.strip()
-        sequences[curr] = output.replace("N", "-")
+        sequences[curr] = output.replace("N", "-").replace("W", "-").replace("Y", "-")
     return sequences, size
 
 

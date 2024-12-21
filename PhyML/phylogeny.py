@@ -2,7 +2,6 @@
 TODOS:
 MAXIMUM LIKELIHOOD BRANCH OPTIMIZATION - PhyML
     -- iterate over all E for loop --
-    4. compute conditional likelihoods for each U and V possible (3 in total)
     5. determine if La, Lb, or Lc is better and compute score if swapping
     -- end loop --
     -- while loop till convergence --
@@ -19,7 +18,7 @@ import numpy as np
 import argparse
 import tree_helpers as th
 import sequence_helpers as sh
-
+from scipy.optimize import minimize_scalar
 
 ''' 
 Evaluates P(b|a, t) under the Jukes-Cantor model
@@ -38,22 +37,28 @@ def jcm(b, a, t, u = 1.0):
         return 0.2 * (1 + (4 * np.exp(-5 * u * t)))
     return 0.2 * (1 - np.exp(-5 * u * t))
 
-#check num of keys in subtrees to see if external or internal
 ''' 
-Given a distance matrix of sequences, generate a phylogeny using
-neighbor-joining and output the post-order representation of the tree.
+Given sequence data, generate a phylogeny using similar methods to
+PhyML
 
 Arguments:
-    dist_m: the distance matrix
+    sequences: a dictionary of taxon to genetic sequence
+    bases: a string of the possible bases in a sequence
+    size: the length of each sequence
 
 Returns:
     ordering: the post-order representation of the tree
 '''
-def make_tree(sequences, size):
+def make_tree(sequences, bases, size, og):
     dist_m, mapping = sh.get_distances(sequences)
-    og = 0
     E, uD = th.neighbor_join(dist_m)
+    lamb = 1
+    #only edges with no swaps going here: tuples of edge and opt_result
+    noswaps = []
+    #only edges with swaps going here: tuples of edge, score, swap, opt_result
+    swaps = []
     for l, r in E:
+        # create subtrees
         u, v = th.find_children(l, r, E)
         subtrees = {}
         treemaps = {}
@@ -66,54 +71,195 @@ def make_tree(sequences, size):
             treemaps[2 + i] = th.assemble_rooted_tree(v[i], r, E)
             subtrees[2 + i] = th.get_ordering(v[i], treemaps[2 + i])
         
-        likelihoods = {}
-        print(sequences)
+        L = np.zeros((size, 40, 5))
+
+        # find likelihoods of subtrees
         for i in subtrees:
-            # likelihoods[i] = likelihood(sequences, size, subtrees[i], treemaps[i], mapping, uD)
-            pass
-        #internal edge
-        if 0 and 2 in likelihoods:
-            pass
-        #external node V
-        elif 0 in likelihoods:
-            pass
+            likelihood(sequences, size, subtrees[i], treemaps[i], mapping, uD, L, bases)
+        # determine optimal branch lengths and swaps
+        U = np.zeros((3, size, 5))
+        V = np.zeros((3, size, 5))
+        # internal branch
+        if 0 in subtrees and 2 in subtrees:
+            w = 0
+            x = 0
+            y = 0
+            z = 0
+            for i in range(size):
+                for j in range(5):
+                    for k in range(5):
+                        w += L[i][u[0]][k] * jcm(bases[k], bases[j], uD[l][u[0]])
+                        x += L[i][u[1]][k] * jcm(bases[k], bases[j], uD[l][u[1]])
+
+                        y += L[i][v[0]][k] * jcm(bases[k], bases[j], uD[r][v[0]])
+                        z += L[i][v[1]][k] * jcm(bases[k], bases[j], uD[r][v[1]])
+
+                    #(a)
+                    U[0][i][j] = w * x
+                    V[0][i][j] = y * z
+                    #(b)
+                    U[1][i][j] = w * y
+                    V[1][i][j] = x * z
+                    #(c)
+                    U[2][i][j] = w * z
+                    V[2][i][j] = y * x
+
+            def total_likelihooda(t):
+                log_likelihood = 0
+                for i in range(size):
+                    prob = 0
+                    for j in range(5):
+                        for k in range(5):
+                            prob += 0.2 * U[0][i][j] * V[0][i][k] * jcm(bases[j], bases[k], t)
+                    log_likelihood += np.log(prob)
+                return log_likelihood
+            opt_resulta = minimize_scalar(lambda x: -total_likelihooda(x), bounds=(0,2*uD[r][l]))
+
+            #change this to make it better in the future maybe
+            def total_likelihoodb(t):
+                log_likelihood = 0
+                for i in range(size):
+                    prob = 0
+                    for j in range(5):
+                        for k in range(5):
+                            prob += 0.2 * U[1][i][j] * V[1][i][k] * jcm(bases[j], bases[k], t)
+                    log_likelihood += np.log(prob)
+                return log_likelihood
+            opt_resultb = minimize_scalar(lambda x: -total_likelihoodb(x), bounds=(0,2*uD[r][l]))
+
+            def total_likelihoodc(t):
+                log_likelihood = 0
+                for i in range(size):
+                    prob = 0
+                    for j in range(5):
+                        for k in range(5):
+                            prob += 0.2 * U[2][i][j] * V[2][i][k] * jcm(bases[j], bases[k], t)
+                    log_likelihood += np.log(prob)
+                return log_likelihood
+            opt_resultc = minimize_scalar(lambda x: -total_likelihoodc(x), bounds=(0,2*uD[r][l]))
+            
+            #maximized likelihoods per swap
+            opta = -opt_resulta.fun
+            optb = -opt_resultb.fun
+            optc = -opt_resultc.fun
+            if max(opta, optb, optc) == opta:
+                noswaps.append(((l, r), opt_resulta.x))
+            elif max(opta, optb, optc) == optb:
+                score = optb - opta
+                swaps.append(((l, r), score, (u[1], v[0]), opt_resultb.x))
+            else:
+                score = optc - opta
+                swaps.append(((l, r), score, (u[1], v[1]), opt_resultc.x))        
+        # external node V
+        elif 0 in subtrees:
+            w = 0
+            x = 0
+            for i in range(size):
+                for j in range(5):
+                    for k in range(5):
+                        #(a)
+                        w += L[i][u[0]][k] * jcm(bases[k], bases[j], uD[l][u[0]])
+                        x += L[i][u[1]][k] * jcm(bases[k], bases[j], uD[l][u[1]])
+  
+                    U[0][i][j] = w * x
+
+            def total_likelihood(t):
+                log_likelihood = 0  
+                for i in range(size):
+                    prob = 0
+                    for j in range(5):
+                        for k in range(5):
+                            h = 0
+                            if sequences[mapping[r]][i] == bases[k]:
+                                h = 1
+                            prob += 0.2 * U[0][i][j] * h * jcm(bases[j], bases[k], t)
+                    log_likelihood += np.log(prob)
+                return log_likelihood
+            opt_result = minimize_scalar(lambda x: -total_likelihood(x), bounds=(0,2*uD[r][l]))
+            noswaps.append(((l, r), opt_result.x)) 
         #external node U
         else:
-            pass
-
-        print(likelihoods)
-        break
+            y = 0
+            z = 0
+            for i in range(size):
+                for j in range(5):
+                    for k in range(5):
+                        #(a)
+                        y += L[i][v[0]][k] * jcm(bases[k], bases[j], uD[r][v[0]])
+                        z += L[i][v[1]][k] * jcm(bases[k], bases[j], uD[r][v[1]])     
+                    V[0][i][j] = y * z
+            def total_likelihood(t):
+                log_likelihood = 0   
+                for i in range(size):
+                    prob = 0
+                    for j in range(5):
+                        for k in range(5):
+                            h = 0
+                            if sequences[mapping[l]][i] == bases[j]:
+                                h = 1
+                            prob += 0.2 * h * V[0][i][k] * jcm(bases[j], bases[k], t)
+                    log_likelihood += np.log(prob)
+                return log_likelihood
+            opt_result = minimize_scalar(lambda x: -total_likelihood(x), bounds=(0,2*uD[r][l]))
+            noswaps.append(((l, r), opt_result.x))
+        
+    # apply swaps and update branch lengths
+    swaps = sorted(swaps, key=lambda tup: tup[1], reverse=True)
+    seen = []
+    for e, score, swap, length in swaps:
+        l, r = e
+        swap1, swap2 = swap
+        if l not in seen and r not in seen:
+            seen.append(l)
+            seen.append(r)
+            if (l, swap1) in E:
+                E.remove((l, swap1))
+                E.append((l, swap2))
+            elif (swap1, l) in E:
+                E.remove((swap1, l))
+                E.append((swap2, l))
+            if (r, swap2) in E:
+                E.remove((r, swap2))
+                E.append((r, swap1))
+            elif (swap2, r) in E:
+                E.remove((swap2, r))
+                E.append((swap1, r))
+        uD[l][r] = uD[l][r] + lamb * (length - uD[l][r])
+        uD[r][l] = uD[r][l] + lamb * (length - uD[r][l]) 
+    
+    for e, length in noswaps:
+        l, r = e
+        uD[l][r] = uD[l][r] + lamb * (length - uD[l][r])
+        uD[r][l] = uD[r][l] + lamb * (length - uD[r][l])
     return
 
 
-#IMPORTED FROM A3, add sup fpr gaps
-''' Computes the likelihood of the data given the topology specified by ordering
+''' 
+Computes the likelihood of the data given the topology specified by `ordering`
+by editing `L`
 
 Arguments:
     data: sequence data (dict: name of sequence owner -> sequence)
     seqlen: length of sequences
     ordering: postorder traversal of our topology
-    bp: branch probabilities for the given branches: 6x4x4 matrix indexed as
-        branch_probs[branch_id][a][b] = P(b | a, t_branch_id)
-Returns:
-    total_log_prob: log likelihood of the topology given the sequence data
+    treemap: the topology of the tree in the form of a dictionary
+    mapping: the mapping of node indices to the actual sequence names
+    ud: the dictionary storing the lengths of the branches
+    L: the matrix of subtree likelihoods where L[i][j][k] is the probability of
+    sequence j at index i having base k
+    bases: a string of the possible bases in a sequence
 '''
-def likelihood(data, seqlen, ordering, treemap, mapping, ud):
-    total_log_prob = 0.0
-    bases = 'ACGT-'
-    base_map = {b: i for i, b in enumerate(bases)}
-    l = np.zeros((seqlen, 40, 5)) #might change later
-
+def likelihood(data, seqlen, ordering, treemap, mapping, ud, L, bases):
     for index in range(seqlen):
         for node_idx in ordering:
             # leaf case
             if (treemap[node_idx] == []): 
                 base = data[mapping[node_idx]][index]
                 for i in range(5):
-                    if base_map[base] == i:
-                        l[index][node_idx][i] = 1.0 
+                    if base == bases[i]:
+                        L[index][node_idx][i] = 1.0 
                     else:
-                        l[index][node_idx][i] = 0.0
+                        L[index][node_idx][i] = 0.0
             # node with 2 children
             else:
                 for i in range(5): 
@@ -122,30 +268,24 @@ def likelihood(data, seqlen, ordering, treemap, mapping, ud):
                     right_prob = 0.0
                     for j in range(5):
                         #find left prob
-                        left_prob += jcm(bases[i], bases[j], ud[i][j]) * l[index][treemap[node_idx][0]][j]
+                        left_prob += jcm(bases[i], bases[j], ud[i][j]) * L[index][treemap[node_idx][0]][j]
                         #find right prob
-                        right_prob += jcm(bases[i], bases[j], ud[i][j]) * l[index][treemap[node_idx][1]][j]
+                        right_prob += jcm(bases[i], bases[j], ud[i][j]) * L[index][treemap[node_idx][1]][j]
                     #combine for prob at node
-                    l[index][node_idx][i] = left_prob * right_prob
-                    
-        root = ordering[-1]  
-        prob = 0
-        for i in range(5):
-            prob += l[index][root][i] * 0.20
-
-        total_log_prob += np.log(prob)
-    return total_log_prob
+                    L[index][node_idx][i] = left_prob * right_prob
         
 
 
 def main():
     parser = argparse.ArgumentParser(
         description='Maximum Likelihood phylogeny on a set of sequences')
-    parser.add_argument('-f', action="store", dest="f", type=str, default='data/geneious_msa/combo - all data - realigned - 2.fasta')
+    parser.add_argument('-f', action="store", dest="f", type=str, default='MUSCLE/output/example.fasta')
     args = parser.parse_args()
     seq_file = args.f
     sequences, size = sh.read_data(seq_file)
-    make_tree(sequences, size)
+    bases = 'ACGT-'
+    og = 0
+    make_tree(sequences, bases, size, og)
     return
 
 
